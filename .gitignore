@@ -1,0 +1,44 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Node / JS / Next.js
+node_modules/
+.next/
+out/
+dist/
+build/
+.turbo/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# Foundry / Solidity (contracts/)
+contracts/cache/
+contracts/out/
+contracts/broadcast/
+!contracts/broadcast/**/dry-run/
+
+# Python (backend/mcp-monitor/)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Circle / wallet secrets
+entity-secret*
+recovery-file*
+
+# Editor
+.vscode/
+.idea/
+*.swp
