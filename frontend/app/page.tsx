@@ -2,15 +2,18 @@ import { ArtDecoSunburst } from "@/components/art-deco-sunburst"
 import { ArtDecoDivider } from "@/components/art-deco-divider"
 import { ServiceCard } from "@/components/service-card"
 import { CTAForm } from "@/components/cta-form"
+import { ParallaxLayer } from "@/components/parallax-layer"
 
 export default function Home() {
   return (
     <main className="min-h-screen bg-background">
       {/* Hero Section */}
       <section className="relative min-h-screen flex flex-col items-center justify-center px-6 overflow-hidden">
-        <ArtDecoSunburst />
+        <ParallaxLayer speed={0.15} className="absolute inset-0">
+          <ArtDecoSunburst />
+        </ParallaxLayer>
 
-        <div className="relative z-10 text-center max-w-4xl mx-auto">
+        <ParallaxLayer speed={0.35} fade className="relative z-10 text-center max-w-4xl mx-auto">
           {/* Decorative top element */}
           <div className="flex justify-center mb-8">
             <div className="flex items-center gap-4">
@@ -20,15 +23,14 @@ export default function Home() {
             </div>
           </div>
 
-          <p className="text-primary tracking-[0.3em] uppercase text-sm mb-6">Est. 2024</p>
+          <p className="text-primary tracking-[0.3em] uppercase text-sm mb-6">Trust-Minimized Agent Broker</p>
 
           <h1 className="font-serif text-5xl md:text-7xl lg:text-8xl text-foreground mb-6 leading-tight">
-            <span className="text-gold-gradient">Aurum</span> Private
+            <span className="text-gold-gradient">Athena</span>
           </h1>
 
-          <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto leading-relaxed mb-12">
-            An exclusive collective for the discerning investor, curating extraordinary opportunities in alternative
-            assets.
+          <p className="text-base md:text-lg text-muted-foreground max-w-xl mx-auto leading-relaxed mb-12 md:whitespace-nowrap">
+            Routing decisions backed by real USDC, verified on-chain.
           </p>
 
           {/* Decorative bottom element */}
@@ -38,7 +40,7 @@ export default function Home() {
               <div className="w-2 h-2 rotate-45 bg-primary" />
             </div>
           </div>
-        </div>
+        </ParallaxLayer>
 
         {/* Scroll indicator */}
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce">
@@ -61,20 +63,21 @@ export default function Home() {
 
           <div className="grid md:grid-cols-2 gap-16 items-center">
             <div>
-              <p className="text-primary tracking-[0.2em] uppercase text-sm mb-4">Our Philosophy</p>
+              <p className="text-primary tracking-[0.2em] uppercase text-sm mb-4">How It Works</p>
               <h2 className="font-serif text-4xl md:text-5xl text-foreground mb-6 leading-tight text-balance">
-                Where Vision Meets Opportunity
+                Sealed Before It Runs, Proven After It Ends
               </h2>
             </div>
             <div className="space-y-6">
               <p className="text-muted-foreground leading-relaxed text-lg">
-                In a world of ordinary investments, we seek the extraordinary. Aurum Private unites a select circle of
-                visionary investors who understand that true wealth is built through access to opportunities unseen by
-                the common market.
+                Before a single call streams, Athena commits a SHA-256 hash of its routing decision — chosen provider,
+                predicted quality, predicted latency, confidence — to a smart contract on Arc, and posts a USDC bond
+                against that prediction.
               </p>
               <p className="text-muted-foreground leading-relaxed text-lg">
-                From museum-quality fine art to vintage automobiles of distinction, from rare collectibles to emerging
-                alternative assets—we curate, we verify, we present only the exceptional.
+                An MCP quality monitor scores every call as results arrive. If the stream matches what Athena
+                predicted, the bond releases back to Athena. If it doesn&apos;t, the bond slashes automatically to the
+                client — no committee, no dispute, no delay.
               </p>
             </div>
           </div>
@@ -85,40 +88,37 @@ export default function Home() {
       <section className="py-24 px-6 bg-card/50">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
-            <p className="text-primary tracking-[0.2em] uppercase text-sm mb-4">Our Offerings</p>
-            <h2 className="font-serif text-4xl md:text-5xl text-foreground text-balance">Curated Excellence</h2>
+            <p className="text-primary tracking-[0.2em] uppercase text-sm mb-4">The Protocol</p>
+            <h2 className="font-serif text-4xl md:text-5xl text-foreground text-balance">Commit, Stream, Settle</h2>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8">
             <ServiceCard
-              title="Fine Art"
-              description="Access to museum-quality works from established masters and visionary contemporaries, vetted by world-class curators."
+              title="Sealed Commitment"
+              description="Athena hashes its routing decision and posts a USDC bond on-chain before any provider call is made — the prediction is locked in first."
               icon={
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-12 h-12">
-                  <rect x="3" y="3" width="18" height="18" rx="2" />
-                  <circle cx="8.5" cy="8.5" r="1.5" />
-                  <path d="M21 15l-5-5L5 21" />
+                  <rect x="4" y="11" width="16" height="9" rx="2" />
+                  <path d="M8 11V7a4 4 0 0 1 8 0v4" />
                 </svg>
               }
             />
             <ServiceCard
-              title="Rare Collectibles"
-              description="From vintage timepieces to historic memorabilia, each piece authenticated and provenance-verified to the highest standards."
+              title="Streamed Nanopayments"
+              description="Per-call USDC payments flow to the chosen provider via x402 as results arrive, while an MCP monitor scores quality and latency live."
+              icon={
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-12 h-12">
+                  <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z" />
+                </svg>
+              }
+            />
+            <ServiceCard
+              title="Reveal & Settle"
+              description="When the stream ends, Athena reveals the sealed decision. If the prediction held, the bond releases; if not, it slashes to the client."
               icon={
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-12 h-12">
                   <circle cx="12" cy="12" r="9" />
                   <path d="M12 6v6l4 2" />
-                </svg>
-              }
-            />
-            <ServiceCard
-              title="Classic Automobiles"
-              description="Exceptional motorcars of historical significance, each representing the pinnacle of automotive artistry and engineering."
-              icon={
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-12 h-12">
-                  <path d="M5 17h14M6 9l2-4h8l2 4M4 14h16v3H4z" />
-                  <circle cx="7" cy="17" r="2" />
-                  <circle cx="17" cy="17" r="2" />
                 </svg>
               }
             />
@@ -139,12 +139,12 @@ export default function Home() {
 
             <blockquote className="relative z-10">
               <p className="font-serif text-2xl md:text-3xl text-foreground leading-relaxed italic mb-8">
-                Membership in Aurum Private has transformed how I approach alternative investments. The caliber of
-                opportunities and the discretion of their service is simply unmatched.
+                The bond isn&apos;t trust — it&apos;s math. If the prediction doesn&apos;t hold, the funds move
+                automatically. No committee, no dispute, no delay.
               </p>
               <footer className="text-muted-foreground">
-                <span className="text-primary">—</span> A Distinguished Member,{" "}
-                <span className="text-primary">Geneva</span>
+                <span className="text-primary">—</span> The Athena Protocol,{" "}
+                <span className="text-primary">settled on Arc</span>
               </footer>
             </blockquote>
           </div>
@@ -160,11 +160,11 @@ export default function Home() {
         <div className="max-w-3xl mx-auto relative z-10">
           <div className="text-center mb-12">
             <ArtDecoDivider variant="chevron" />
-            <p className="text-primary tracking-[0.2em] uppercase text-sm mb-4">Begin Your Journey</p>
-            <h2 className="font-serif text-4xl md:text-5xl text-foreground mb-6 text-balance">Request an Invitation</h2>
+            <p className="text-primary tracking-[0.2em] uppercase text-sm mb-4">Try It Live</p>
+            <h2 className="font-serif text-4xl md:text-5xl text-foreground mb-6 text-balance">Start a Stream</h2>
             <p className="text-muted-foreground text-lg max-w-xl mx-auto">
-              Membership is by invitation only. Submit your interest and a member of our team will be in touch to
-              discuss your candidacy.
+              Connect your wallet to watch Athena commit a routing decision, post a bond, and stream verified
+              nanopayments in real time.
             </p>
           </div>
 
@@ -186,12 +186,12 @@ export default function Home() {
           <div className="flex flex-col items-center gap-6">
             <div className="flex items-center gap-4">
               <div className="w-12 h-px bg-primary" />
-              <span className="font-serif text-xl text-foreground">Aurum Private</span>
+              <span className="font-serif text-xl text-foreground">Athena</span>
               <div className="w-12 h-px bg-primary" />
             </div>
 
             <p className="text-muted-foreground text-sm text-center">
-              &copy; {new Date().getFullYear()} Aurum Private. All rights reserved. Membership by invitation only.
+              &copy; {new Date().getFullYear()} Athena. Trust-minimized agent broker on Arc.
             </p>
 
             <div className="flex items-center gap-1">

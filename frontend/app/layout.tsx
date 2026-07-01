@@ -8,9 +8,9 @@ const _inter = Inter({ subsets: ["latin"] })
 const _playfair = Playfair_Display({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Aurum Private | Exclusive Investment Collective",
+  title: "Athena | Trust-Minimized Agent Broker on Arc",
   description:
-    "An exclusive collective for the discerning investor, curating extraordinary opportunities in alternative assets.",
+    "Athena commits a sealed routing prediction on-chain, posts a USDC bond, streams nanopayments via x402, and settles automatically based on verified outcomes.",
   generator: "v0.app",
   icons: {
     icon: [

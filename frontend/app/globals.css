@@ -135,3 +135,20 @@
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+
+/* Smooth glowing pulse for the art deco sunburst background lines */
+@keyframes sunburst-glow {
+  0%,
+  100% {
+    opacity: 0.16;
+    filter: drop-shadow(0 0 0px oklch(0.72 0.12 85 / 0.7));
+  }
+  50% {
+    opacity: 0.45;
+    filter: drop-shadow(0 0 10px oklch(0.72 0.12 85 / 0.9));
+  }
+}
+
+.animate-sunburst-glow {
+  animation: sunburst-glow 5s ease-in-out infinite;
+}

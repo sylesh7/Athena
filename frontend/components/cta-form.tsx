@@ -20,8 +20,8 @@ export function CTAForm() {
   if (submitted) {
     return (
       <div className="text-center py-8">
-        <p className="font-serif text-2xl text-primary mb-2">Thank You</p>
-        <p className="text-muted-foreground">Your invitation request has been received. We shall be in touch.</p>
+        <p className="font-serif text-2xl text-primary mb-2">You&apos;re In</p>
+        <p className="text-muted-foreground">We&apos;ll notify you when Athena goes live on Arc.</p>
       </div>
     )
   }
@@ -40,7 +40,7 @@ export function CTAForm() {
         type="submit"
         className="bg-primary text-primary-foreground hover:bg-primary/90 font-medium tracking-wider uppercase text-sm px-8 transition-all duration-300"
       >
-        Request Invitation
+        Get Early Access
       </Button>
     </form>
   )
