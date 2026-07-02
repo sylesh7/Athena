@@ -18,14 +18,14 @@ Use this as your live tracker. Update it as you complete each item.
 - [x] `contracts/test/AthenaCommit.t.sol` — 29 tests, 29 passing (`forge test -vvv`)
 - [x] `contracts/script/Deploy.s.sol` — deploy script with post-deploy checklist output
 - [x] `shared/addresses.json` — all known Arc Testnet addresses filled in
-- [ ] **Phase 1 sync with team** — share function signatures + `taskId` scheme (H1, H3)
+- [x] **Phase 1 sync with team** — shared contract address, ABI, taskId scheme with H1 + H2
 
 ### Phase 2 — Deploy & integrate
-- [ ] `forge script Deploy.s.sol --broadcast` → AthenaCommit deployed on Arc Testnet
-- [ ] `shared/addresses.json` `athenaCommit` field filled with deployed address
-- [ ] `forge inspect AthenaCommit abi > shared/abis/AthenaCommit.json` — ABI exported
-- [ ] **Ping Backend B + Frontend with address** (H4)
-- [ ] Integration test: `commit()` → `reveal()` → `withdraw()` on real Arc RPC (manual cast calls)
+- [x] `forge script Deploy.s.sol --broadcast` → AthenaCommit deployed: `0x1cFC54256F28C76891891a266c03AD8ceA63D416`
+- [x] `shared/addresses.json` `athenaCommit` field filled with deployed address
+- [x] `forge inspect AthenaCommit abi > shared/abis/AthenaCommit.json` — ABI exported
+- [x] **Ping Backend B + Frontend with address** (H4)
+- [x] Integration test: `commit()` → `reveal()` → `withdraw()` on real Arc RPC — all passing
 - [ ] Provider wallet addresses received from Backend B (H2)
 - [ ] `contracts/scripts/register-agents.ts` run → all 4 agents registered on ERC-8004
 - [ ] `shared/addresses.json` `agents` section filled with tokenIds
