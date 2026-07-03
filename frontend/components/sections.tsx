@@ -58,7 +58,7 @@ export function Future() {
       </Reveal>
       <Reveal as="p">
         Before a single call streams, Athena hashes its routing decision — chosen
-        provider, predicted quality, predicted latency, confidence — and commits
+        provider, predicted quality, predicted latency, confidence and commits
         it to a smart contract on Arc, posting a USDC bond against that
         prediction. An MCP quality monitor scores every call as it lands. If the
         stream matches what was predicted, the bond returns. If it doesn&apos;t,
@@ -94,7 +94,7 @@ export function Pods() {
           <p className="desc">
             Connect your wallet, post a bond, and watch Athena commit a sealed
             routing decision before a single USDC nanopayment streams to the
-            chosen provider. No committee decides the outcome — the prediction
+            chosen provider. No committee decides the outcome the prediction
             does.
           </p>
         </div>
@@ -162,7 +162,7 @@ export function Divisions() {
         <Reveal as="h3">Athena: A Trust-Minimized Agent Broker on Arc</Reveal>
         <div>
           <Reveal as="p">
-            Every stream relies on five Circle building blocks working together —
+            Every stream relies on five Circle building blocks working together
             policy-controlled agent wallets, Gateway nanopayments, x402 payment
             triggers, marketplace discovery, and CCTP for cross-chain payouts.
           </Reveal>
@@ -191,7 +191,7 @@ const CHAPTERS = [
     title: ["The", "Commitment"],
     body: [
       "Athena reads the Circle Agent Marketplace and evaluates providers by ERC-8004 reputation, price, and endpoint count.",
-      "It forms a structured decision — chosen provider, predicted quality, predicted latency, confidence — hashes it, commits the hash on-chain, and posts a USDC bond against its own prediction.",
+      "It forms a structured decision chosen provider, predicted quality, predicted latency, confidence — hashes it, commits the hash on-chain, and posts a USDC bond against its own prediction.",
     ],
   },
   {

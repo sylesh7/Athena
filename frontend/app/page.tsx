@@ -1,4 +1,3 @@
-import Loader from "@/components/Loader";
 import Cursor from "@/components/Cursor";
 import Nav from "@/components/Nav";
 import Marquee from "@/components/Marquee";
@@ -17,13 +16,12 @@ export default function Home() {
   return (
     <>
       <Cursor />
-      <Loader />
       <Nav />
       <main>
         <Hero />
         <Statement />
         <Future />
-        <Marquee text="FATES PROGRAM" />
+        <Marquee text="ATHENA PROTOCOL" />
         <Pods />
         <Solar />
         <Divisions />
