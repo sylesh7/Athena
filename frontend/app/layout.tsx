@@ -11,11 +11,11 @@ const chakra = Chakra_Petch({
 export const metadata: Metadata = {
   title: "Athena",
   description:
-    "Athena is an immersive, narrative-driven, web3 experience following the next step in human survival.",
+    "Athena commits a sealed routing prediction on-chain, posts a USDC bond, streams nanopayments via x402, and settles automatically based on verified outcomes — on Arc.",
   openGraph: {
     title: "Athena",
     description:
-      "Athena is an immersive, narrative-driven, web3 experience following the next step in human survival.",
+      "Athena commits a sealed routing prediction on-chain, posts a USDC bond, streams nanopayments via x402, and settles automatically based on verified outcomes — on Arc.",
     type: "website",
   },
 };

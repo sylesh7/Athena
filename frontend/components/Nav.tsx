@@ -21,7 +21,7 @@ export default function Nav() {
     <nav className="nav">
       <div className="nav-progress" ref={bar} />
       <a className="nav-brand" href="#top" aria-label="Home">
-        <Image src="/image/63b814185c1004b71b3cafd4_icon.svg" alt="Fates" width={40} height={40} />
+        <Image src="/image/63b814185c1004b71b3cafd4_icon.svg" alt="Athena" width={40} height={40} />
       </a>
       <div className="nav-spacer" />
       <div className="nav-links">
@@ -38,7 +38,7 @@ export default function Nav() {
           <span className="num">003</span>
         </a>
         <a className="nav-item nav-cta" href="#">
-          <span className="label">LAUNCH EXODUS</span>
+          <span className="label">CONNECT WALLET</span>
           <span className="num">004</span>
         </a>
       </div>

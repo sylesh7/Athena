@@ -17,14 +17,14 @@ export default function Loader() {
       <div className="loader-marquee">
         <span>
           {Array.from({ length: 6 })
-            .map(() => "EVACUATE EARTH  *  ")
+            .map(() => "COMMIT  *  STREAM  *  SETTLE  *  ")
             .join("")}
         </span>
       </div>
       <button className="enter-btn" onClick={() => setGone(true)}>
         ENTER
       </button>
-      <div className="loader-sub">EVACUATION BEGINS&nbsp;&nbsp;//&nbsp;&nbsp;2022</div>
+      <div className="loader-sub">LIVE ON ARC TESTNET&nbsp;&nbsp;//&nbsp;&nbsp;2026</div>
     </div>
   );
 }
