@@ -35,7 +35,7 @@ Use this as your live tracker. Update it as you complete each item.
 - [ ] **Full manual loop with team** — commit → stream → reveal → slash/release working live (H6)
 
 ### Phase 3 — Automation support
-- [ ] Backend B's Mastra workflow calling `commit()`/`reveal()` without failures
+- [ ] Backend B's broker logic calling `commit()`/`reveal()` without failures
 - [ ] `taskId` mismatch verified: `computeTaskId()` on-chain matches Backend B's encoding
 - [ ] ABI re-exported and teammates pinged if any contract change
 
@@ -322,7 +322,7 @@ Expected output in `shared/addresses.json`:
 Athena is the **evaluator** in ERC-8183. Job lifecycle for each stream:
 
 ```
-1. Client creates job (Backend B's Mastra orchestrator or manually):
+1. Client creates job (Backend B's broker logic or manually):
    createJob(provider, evaluator=address(AthenaCommit), expiredAt, description, hook=0x0)
    → returns bytes32 jobId
 
@@ -393,11 +393,11 @@ Run together as a team before declaring Phase 2 done:
 Backend B owns Phase 3 automation. Your job:
 
 - Keep ABI current — re-export + ping both teammates if anything changes
-- Debug `commit()`/`reveal()` call failures from Mastra workflow
+- Debug `commit()`/`reveal()` call failures from Backend B's broker logic
 
 **Most common Phase 3 failures:**
 
-1. **`taskId` mismatch** between Backend B's Mastra encoding and your Foundry scheme
+1. **`taskId` mismatch** between Backend B's TypeScript encoding and your Foundry scheme
    - Double-check byte-for-byte: `keccak256(abi.encodePacked(clientAddress, taskDescription, blockNumber))`
    - Use `AthenaCommit.computeTaskId(client, desc, blockNum)` as the on-chain reference
 

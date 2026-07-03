@@ -28,7 +28,7 @@ Athena is an AI broker agent that sets itself up autonomously using Circle's Age
 |---|---|---|
 | `README.md` | Everyone reads | This file — index, shared facts, handoff map, judging alignment |
 | `BACKEND_A_README.md` | Backend A | Contracts: AthenaCommit.sol, ERC-8183 integration, ERC-8004 registration, CCTP Phase 4 |
-| `BACKEND_B_README.md` | Backend B | Stream loop, x402 payments, Circle CLI/wallets, Mastra orchestration, MCP quality monitor |
+| `BACKEND_B_README.md` | Backend B | Stream loop, x402 payments, Circle CLI/wallets, deterministic broker logic, MCP quality monitor |
 | `FRONTEND_README.md` | Frontend | All 6 pages, state management, data flow, component breakdown |
 
 ---
@@ -62,8 +62,6 @@ Athena is an AI broker agent that sets itself up autonomously using Circle's Age
 ⚠️ **USDC decimals rule — read once, remember always:** all payment amounts, bond amounts, escrow amounts use the **6-decimal ERC-20 interface**. The 18-decimal native interface is gas only. Mixing these is the #1 bug on Arc — if a number looks wrong by a factor of a trillion, this is why.
 
 ⚠️ **`anvil` is not Arc.** Local Foundry simulator cannot reproduce Arc's blocklist enforcement, native precompiles, or EIP-7708 Transfer logs. Unit tests: `anvil`. Integration tests: real Arc Testnet RPC.
-
-⚠️ **Mastra supply-chain warning.** A June 17, 2026 npm attack backdoored 140+ `@mastra` packages. Pin exact versions. Verify lockfile before installing.
 
 ⚠️ **`circle services pay` has no loop/stream mode.** It makes one payment per invocation. Backend B implements the stream loop in application code using `GatewayClient` + `fetchWithPayment` from `@circle-fin/x402-batching/client`. This is confirmed — do not waste time searching for a `--loop` flag that does not exist.
 
@@ -142,7 +140,7 @@ athena/
 │   └── foundry.toml
 ├── backend/                # Backend B owns
 │   ├── stream/             # GatewayClient stream loop
-│   ├── agents/             # Mastra broker agent + provider agents
+│   ├── agents/             # Broker routing logic (plain TS, no framework) + provider agents
 │   ├── mcp-monitor/        # FastMCP quality evaluator (Python)
 │   └── cctp/               # Phase 4 cross-chain payout
 ├── frontend/               # Frontend owns

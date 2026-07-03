@@ -1,7 +1,9 @@
 # Athena — Backend B README
-### Owner: Payments, Stream Loop, Agents & Orchestration
+### Owner: Payments, Stream Loop, Agents & Broker Logic
 **You own:** `backend/stream/`, `backend/agents/`, `backend/mcp-monitor/`, `backend/cctp/`
 You depend on Backend A's deployed contract + ABI (`shared/`). Never hardcode an address — always read from `shared/addresses.json`.
+
+**No agent framework.** Athena's broker logic is deterministic (discover → score → select → commit → stream), so it's written as plain TypeScript, not built on Mastra or any other agent framework. The Circle Agent Wallet is Athena's identity and payment account — it is not a substitute for a framework and doesn't need one on top of it. This also sidesteps the Mastra supply-chain risk entirely (140+ `@mastra` packages were backdoored in a June 17, 2026 npm attack).
 
 ---
 
@@ -28,8 +30,6 @@ You depend on Backend A's deployed contract + ABI (`shared/`). Never hardcode an
 
 **Agent wallet Gateway balance ≠ wallet balance.** To make gasless x402 nanopayments via Gateway, the agent wallet needs USDC deposited specifically INTO Gateway, not just held in the wallet. `circle gateway deposit --amount 10 --address $WALLET --chain ARC-TESTNET --method direct` before making any x402 calls.
 
-**Mastra supply-chain warning.** June 17, 2026 npm attack backdoored 140+ `@mastra` packages. Pin exact versions. Verify lockfile before `npm install`.
-
 ---
 
 ## PHASE 1 — Agent wallets & provider setup
@@ -39,13 +39,13 @@ You depend on Backend A's deployed contract + ABI (`shared/`). Never hardcode an
 Athena sets up its own broker wallet autonomously. This is a genuine agentic sophistication moment — no human writes integration code:
 
 ```bash
-# In your terminal, or as the first step of your Mastra orchestration:
+# In your terminal, or as the first step of Athena's broker startup script:
 curl -sL https://agents.circle.com/skills/setup.md
 # Follow the returned instructions — this installs Circle CLI, creates an agent wallet,
 # funds it, and deposits into Gateway. Your coding agent (Claude/Cursor) can run this autonomously.
 ```
 
-For programmatic setup in your Mastra workflow:
+For programmatic setup in Athena's broker startup script:
 ```js
 import { initiateDeveloperControlledWalletsClient } from "@circle-fin/developer-controlled-wallets";
 
@@ -158,7 +158,7 @@ circle services list --chain ARC-TESTNET
 # Returns available x402 services including yours once listed
 ```
 
-In your Mastra workflow, Athena calls this as a shell tool or via the Circle SDK to get live provider metadata before making routing decisions.
+Athena's `discoverProviders()` step calls this directly via the Circle SDK (or shells out to the CLI) to get live provider metadata before scoring and selecting.
 
 ### Phase 2.4 — Wait for Backend A's handoff (H4)
 Once Backend A deploys and pushes `shared/addresses.json` + ABI, pull them in:
@@ -172,7 +172,7 @@ Test that you can read the contract — call `commitments(taskId)` for a dummy t
 
 ---
 
-## PHASE 3 — Stream loop, Mastra orchestration, MCP monitor
+## PHASE 3 — Stream loop, broker logic, MCP monitor
 
 ### Phase 3.1 — MCP quality monitor (Python FastMCP)
 
@@ -277,7 +277,7 @@ export async function runStream(config: StreamConfig) {
     selectedProvider: config.providerUrl,
     predictedQualityScore: config.predictedQuality,
     predictedLatencyMs: config.predictedLatencyMs,
-    confidenceScore: 0.85, // computed by Mastra agent
+    confidenceScore: 0.85, // computed deterministically in scoreProviders()
     nonce: crypto.randomUUID(),
     timestamp: Date.now(),
   };
@@ -361,52 +361,52 @@ export async function runStream(config: StreamConfig) {
 }
 ```
 
-### Phase 3.3 — Mastra broker agent
+### Phase 3.3 — Broker routing logic (deterministic, no framework)
 
-```bash
-npm install mastra @mastra/core
-# ⚠️ Pin exact versions — check advisory for June 17, 2026 supply-chain attack before installing
-```
+Athena's routing decision is discover → score → select → predict. That's a plain function pipeline, not an LLM reasoning loop, so it's written as plain TypeScript. The Circle Agent Wallet (Phase 1.1) is Athena's identity and payment layer — this is just the decision logic that sits on top of it. No `npm install mastra` needed.
 
 ```js
 // backend/agents/broker.ts
-import { Agent, createTool } from "@mastra/core";
-import { z } from "zod";
 
-const discoverProvidersTool = createTool({
-  id: "discover-providers",
-  description: "List available x402 provider agents from Circle Agent Marketplace",
-  inputSchema: z.object({ category: z.string() }),
-  execute: async ({ context }) => {
-    // Call circle CLI: circle services list --chain ARC-TESTNET
-    // Parse output and return provider list with prices + endpoint counts
-    const providers = await execCircleCLI(`services list --chain ARC-TESTNET --output json`);
-    return JSON.parse(providers);
-  },
-});
+async function discoverProviders(category: string) {
+  // circle services list --chain ARC-TESTNET --output json
+  const providers = await execCircleCLI(`services list --chain ARC-TESTNET --output json`);
+  return JSON.parse(providers);
+}
 
-const evaluateProviderTool = createTool({
-  id: "evaluate-provider",
-  description: "Score a provider using ERC-8004 reputation history",
-  inputSchema: z.object({ providerAddress: z.string() }),
-  execute: async ({ context }) => {
-    // Read ReputationRegistry for this provider's historical scores
-    const reputation = await readErc8004Reputation(context.providerAddress);
-    return reputation;
-  },
-});
+async function scoreProviders(providers: Provider[]) {
+  // Score by ERC-8004 reputation + price + endpoint count
+  return Promise.all(
+    providers.map(async (p) => {
+      const reputation = await readErc8004Reputation(p.address); // ReputationRegistry.readAllFeedback
+      const score = weightedScore({ reputation, price: p.price, endpointCount: p.endpointCount });
+      return { ...p, reputation, score };
+    })
+  );
+}
 
-export const athenabroker = new Agent({
-  name: "Athena Broker",
-  instructions: `You are Athena, a trust-minimized agent broker.
-    Your job: discover available provider agents, select the best one for the task,
-    make a falsifiable prediction about stream quality and latency, then commit that
-    decision on-chain before acting. Your prediction must be specific and checkable —
-    e.g. "quality above 0.85, latency under 500ms per call".
-    Use arc-canteen context for up-to-date Arc and Circle documentation.`,
-  model: { provider: "ANTHROPIC", name: "claude-sonnet-4-6" },
-  tools: { discoverProvidersTool, evaluateProviderTool },
-});
+function selectProvider(scored: ScoredProvider[]) {
+  return scored.reduce((best, p) => (p.score > best.score ? p : best));
+}
+
+function predictOutcome(selected: ScoredProvider) {
+  // Falsifiable, checkable prediction — derived from the provider's own historical
+  // averages, not LLM prose, so the bond is a real bet rather than a guess.
+  return {
+    predictedQualityScore: selected.reputation.avgQuality ?? 0.85,
+    predictedLatencyMs: selected.reputation.avgLatencyMs ?? 500,
+    confidenceScore: selected.reputation.sampleSize > 5 ? 0.9 : 0.6,
+  };
+}
+
+export async function routeTask(task: { taskDescription: string; category: string }) {
+  const providers = await discoverProviders(task.category);
+  const scored = await scoreProviders(providers);
+  const selected = selectProvider(scored);
+  const prediction = predictOutcome(selected);
+
+  return { selectedProvider: selected, ...prediction };
+}
 ```
 
 ### Phase 3.4 — Wire x402 entry point
@@ -415,6 +415,7 @@ export const athenabroker = new Agent({
 // backend/stream/entrypoint.ts — the Gateway-protected route clients hit
 import express from "express";
 import { createGatewayMiddleware } from "@circle-fin/x402-batching/server";
+import { routeTask } from "../agents/broker";
 
 const app = express();
 
@@ -424,15 +425,10 @@ const gateway = createGatewayMiddleware({
 
 // Client pays once here to trigger a full stream session
 app.post("/stream-task", gateway.require("$0.01"), async (req, res) => {
-  const { taskDescription, clientAddress } = req.body;
+  const { taskDescription, category, clientAddress } = req.body;
 
-  // Athena broker agent reasons about which provider to pick
-  const brokerDecision = await athenabroker.generate(
-    `Task: ${taskDescription}. Discover providers, pick the best, give me: selectedProviderUrl, predictedQualityScore (0-1), predictedLatencyMs, confidenceScore`
-  );
-
-  // Parse structured decision from agent output
-  const decision = parseDecision(brokerDecision.text);
+  // Deterministic routing decision — discover, score, select, predict (Phase 3.3)
+  const decision = await routeTask({ taskDescription, category });
 
   // Generate taskId — byte-for-byte matches Backend A's scheme
   const taskId = keccak256(encodePacked(
@@ -443,7 +439,7 @@ app.post("/stream-task", gateway.require("$0.01"), async (req, res) => {
   // Run the stream
   const result = await runStream({
     taskId,
-    providerUrl: decision.selectedProviderUrl,
+    providerUrl: decision.selectedProvider.url,
     predictedQuality: decision.predictedQualityScore,
     predictedLatencyMs: decision.predictedLatencyMs,
     maxCalls: 100,
@@ -534,4 +530,3 @@ await brokerWalletClient.writeContract({
 - Bond amount looks wrong → confirm you're passing 6-decimal units (1 USDC = `1_000_000`)
 - MCP monitor not responding → check it's running on `streamable-http` not stdio transport
 - `@circle-fin/x402-batching` exports don't match → check Circle's live blog, pre-1.0 package can shift
-- Mastra install feels off → verify package integrity against the June 17 advisory before proceeding
