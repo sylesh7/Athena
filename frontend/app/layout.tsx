@@ -1,47 +1,33 @@
-import type React from "react"
-import type { Metadata } from "next"
-import { Inter, Playfair_Display } from "next/font/google"
-import { Analytics } from "@vercel/analytics/next"
-import "./globals.css"
+import type { Metadata } from "next";
+import { Chakra_Petch } from "next/font/google";
+import "./globals.css";
 
-const _inter = Inter({ subsets: ["latin"] })
-const _playfair = Playfair_Display({ subsets: ["latin"] })
+const chakra = Chakra_Petch({
+  weight: ["400", "500", "600", "700"],
+  subsets: ["latin"],
+  display: "swap",
+});
 
 export const metadata: Metadata = {
-  title: "Athena | Trust-Minimized Agent Broker on Arc",
+  title: "Athena",
   description:
-    "Athena commits a sealed routing prediction on-chain, posts a USDC bond, streams nanopayments via x402, and settles automatically based on verified outcomes.",
-  generator: "v0.app",
-  icons: {
-    icon: [
-      {
-        url: "/icon-light-32x32.png",
-        media: "(prefers-color-scheme: light)",
-      },
-      {
-        url: "/icon-dark-32x32.png",
-        media: "(prefers-color-scheme: dark)",
-      },
-      {
-        url: "/icon.svg",
-        type: "image/svg+xml",
-      },
-    ],
-    apple: "/apple-icon.png",
+    "Athena is an immersive, narrative-driven, web3 experience following the next step in human survival.",
+  openGraph: {
+    title: "Athena",
+    description:
+      "Athena is an immersive, narrative-driven, web3 experience following the next step in human survival.",
+    type: "website",
   },
-}
+};
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <html lang="en">
-      <body className={`font-sans antialiased`}>
-        {children}
-        <Analytics />
-      </body>
+    <html lang="en" className={chakra.className}>
+      <body>{children}</body>
     </html>
-  )
+  );
 }
