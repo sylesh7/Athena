@@ -7,7 +7,7 @@ optimizer = true
 optimizer_runs = 200
 
 [rpc_endpoints]
-arc_testnet = "${RPC}"
+arc_testnet = "https://rpc.testnet.arc-node.thecanteenapp.com/v1/swrm_8c204da93fca2d8c58651fbf1fae35596838c36c8e21c04a8cea977489432adb"
 arc_testnet_public = "https://rpc.testnet.arc.network"
 
 [etherscan]

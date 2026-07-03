@@ -2,7 +2,7 @@
   "_comment": "Backend A owns this file. Nobody else edits it. Never hardcode addresses from memory.",
   "chainId": 5042002,
   "network": "Arc Testnet",
-  "rpc": "https://rpc.testnet.arc-node.thecanteenapp.com/v1/swrm_1a528bb24aa6d73679fa0f7d579aded2c6ce198236496ef25ac1122539ace065",
+  "rpc": "https://rpc.testnet.arc-node.thecanteenapp.com/v1/swrm_8c204da93fca2d8c58651fbf1fae35596838c36c8e21c04a8cea977489432adb",
   "rpc_public": "https://rpc.testnet.arc.network",
   "explorer": "https://testnet.arcscan.app",
   "contracts": {
