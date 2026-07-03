@@ -1,0 +1,31 @@
+{
+  "name": "athena-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "wallets:setup": "tsx wallets/setup.ts",
+    "provider1": "tsx agents/provider1.ts",
+    "provider2": "tsx agents/provider2.ts",
+    "provider3": "tsx agents/provider3.ts",
+    "entrypoint": "tsx stream/entrypoint.ts",
+    "dev": "concurrently -n provider1,provider2,provider3,entrypoint -c blue,green,yellow,magenta \"npm:provider1\" \"npm:provider2\" \"npm:provider3\" \"npm:entrypoint\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@circle-fin/x402-batching": "^3.2.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@x402/core": "^2.3.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "viem": "^2.21.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22",
+    "concurrently": "^9.1.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5"
+  }
+}

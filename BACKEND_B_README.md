@@ -245,121 +245,16 @@ if __name__ == "__main__":
 
 ### Phase 3.2 — The stream loop (core of Backend B)
 
-This is the most important piece you build. No CLI loop flag exists — you implement it:
+**Implemented** in `backend/stream/streamLoop.ts` — read that file, not pseudocode here; it was written against the real published `.d.ts` for `@circle-fin/x402-batching@3.2.0` after two mistakes were found in an earlier draft of this section:
 
-```js
-// backend/stream/streamLoop.ts
-import { GatewayClient } from "@circle-fin/x402-batching/client";
-import { createPublicClient, createWalletClient, http } from "viem";
-import addresses from "../../shared/addresses.json";
-import athenaCommitAbi from "../../shared/abis/AthenaCommit.json";
+1. `GatewayClient`'s real constructor is `{ chain: 'arcTestnet', privateKey }`, not `{ walletAddress, chain: "ARC-TESTNET" }`. The paid-fetch method is `.pay(url)`, which reads the price from the resource's 402 challenge automatically — there is no `.fetchWithPayment(url, { maxPaymentAmount })` method and no per-call amount to pass.
+2. `AthenaCommit.reveal(taskId, predictionMet, revealedHash, deliverableHash)` already settles any linked ERC-8183 job atomically inside the same call (see `contracts/src/AthenaCommit.sol`'s `_settleERC8183`). There is no separate `ERC8183.complete()`/`reject()` call to make afterward — passing `erc8183JobId: bytes32(0)` at `commit()` time (the current default, see H2 handoff notes) skips ERC-8183 entirely.
 
-interface StreamConfig {
-  taskId: `0x${string}`;
-  providerUrl: string;
-  predictedQuality: number;
-  predictedLatencyMs: number;
-  maxCalls: number;
-  brokerWalletAddress: string;
-  clientAddress: string;
-  bondAmountUsdc: number; // in 6-decimal units e.g. 1000000 = 1 USDC
-}
-
-export async function runStream(config: StreamConfig) {
-  const gatewayClient = new GatewayClient({
-    walletAddress: config.brokerWalletAddress,
-    chain: "ARC-TESTNET",
-  });
-
-  // 1. Compute structured decision object — deterministic, not LLM prose
-  const decision = {
-    taskId: config.taskId,
-    selectedProvider: config.providerUrl,
-    predictedQualityScore: config.predictedQuality,
-    predictedLatencyMs: config.predictedLatencyMs,
-    confidenceScore: 0.85, // computed deterministically in scoreProviders()
-    nonce: crypto.randomUUID(),
-    timestamp: Date.now(),
-  };
-
-  // 2. SHA-256 hash of canonical JSON string (field order must be deterministic)
-  const canonicalJson = JSON.stringify(decision, Object.keys(decision).sort());
-  const hashBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalJson));
-  const commitHash = "0x" + Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("") as `0x${string}`;
-
-  // 3. Approve USDC + call commit() on AthenaCommit.sol
-  // (approve config.bondAmountUsdc to athenaCommit contract first)
-  const txHash = await brokerWalletClient.writeContract({
-    address: addresses.contracts.athenaCommit as `0x${string}`,
-    abi: athenaCommitAbi,
-    functionName: "commit",
-    args: [config.taskId, commitHash, BigInt(config.bondAmountUsdc), config.clientAddress],
-  });
-  console.log("Committed on-chain:", txHash);
-
-  // 4. Stream loop — GatewayClient.fetchWithPayment per call
-  let predictionMet = true;
-  for (let i = 0; i < config.maxCalls; i++) {
-    const startTime = Date.now();
-    try {
-      const response = await gatewayClient.fetchWithPayment(
-        `${config.providerUrl}?call=${i}`,
-        { method: "GET", maxPaymentAmount: "0.000001" } // $0.000001 USDC per call
-      );
-      const data = await response.json();
-      const latencyMs = Date.now() - startTime;
-
-      // 5. Send result to MCP monitor
-      const monitorResult = await callMcpMonitor("record_call_result", {
-        task_id: config.taskId,
-        call_number: i,
-        quality_score: data.qualityScore ?? 1.0,
-        latency_ms: latencyMs,
-        predicted_quality: config.predictedQuality,
-        predicted_latency_ms: config.predictedLatencyMs,
-      });
-
-      if (monitorResult.verdict === "slash") {
-        predictionMet = false;
-        console.log(`Stream stopping at call ${i} — quality dropped`);
-        break;
-      }
-    } catch (err) {
-      console.error(`Call ${i} failed:`, err);
-      predictionMet = false;
-      break;
-    }
-  }
-
-  // 6. Reveal on-chain
-  const revealTx = await brokerWalletClient.writeContract({
-    address: addresses.contracts.athenaCommit as `0x${string}`,
-    abi: athenaCommitAbi,
-    functionName: "reveal",
-    args: [config.taskId, predictionMet, commitHash], // same commitHash — proves no lying
-  });
-  console.log("Revealed on-chain:", revealTx, "predictionMet:", predictionMet);
-
-  // 7. Call ERC-8183 complete() or reject() based on outcome
-  if (predictionMet) {
-    await brokerWalletClient.writeContract({
-      address: addresses.contracts.erc8183 as `0x${string}`,
-      abi: erc8183Abi,
-      functionName: "complete",
-      args: [jobId, "Stream completed successfully", "0x0000..."],
-    });
-  } else {
-    await brokerWalletClient.writeContract({
-      address: addresses.contracts.erc8183 as `0x${string}`,
-      abi: erc8183Abi,
-      functionName: "reject",
-      args: [jobId, "Quality prediction not met", "0x0000..."],
-    });
-  }
-
-  return { predictionMet, txHash, revealTx };
-}
-```
+High-level flow (see the real file for the exact code):
+1. Build the structured decision object (taskId, selected provider, predicted quality/latency, confidence, nonce, timestamp) and SHA-256 it as canonical JSON.
+2. Approve the bond, then `commit()`.
+3. Loop up to `maxCalls` times: `gatewayClient.pay(providerUrl)`, report the result to the MCP monitor via `mcp-monitor/client.ts`, stop early on a `"slash"` verdict.
+4. Ask the monitor for the final verdict and `reveal()` once — the contract handles bond settlement (and ERC-8183, if linked) in that same call.
 
 ### Phase 3.3 — Broker routing logic (deterministic, no framework)
 
@@ -413,66 +308,25 @@ export async function routeTask(task: { taskDescription: string; category: strin
 
 ```js
 // backend/stream/entrypoint.ts — the Gateway-protected route clients hit
-import express from "express";
-import { createGatewayMiddleware } from "@circle-fin/x402-batching/server";
-import { routeTask } from "../agents/broker";
-
-const app = express();
-
-const gateway = createGatewayMiddleware({
-  sellerAddress: process.env.BROKER_WALLET_ADDRESS,
-});
-
-// Client pays once here to trigger a full stream session
-app.post("/stream-task", gateway.require("$0.01"), async (req, res) => {
-  const { taskDescription, category, clientAddress } = req.body;
-
-  // Deterministic routing decision — discover, score, select, predict (Phase 3.3)
-  const decision = await routeTask({ taskDescription, category });
-
-  // Generate taskId — byte-for-byte matches Backend A's scheme
-  const taskId = keccak256(encodePacked(
-    ["address", "string", "uint256"],
-    [clientAddress, taskDescription, BigInt(await getBlockNumber())]
-  ));
-
-  // Run the stream
-  const result = await runStream({
-    taskId,
-    providerUrl: decision.selectedProvider.url,
-    predictedQuality: decision.predictedQualityScore,
-    predictedLatencyMs: decision.predictedLatencyMs,
-    maxCalls: 100,
-    brokerWalletAddress: process.env.BROKER_WALLET_ADDRESS,
-    clientAddress,
-    bondAmountUsdc: 1_000_000, // 1 USDC bond
-  });
-
-  res.json({ taskId, ...result });
-});
-
-app.listen(3000);
 ```
+
+**Implemented** in `backend/stream/entrypoint.ts`. `POST /stream-task` is itself Gateway-protected (`gateway.require("$0.01")`); it validates the body with zod, calls `routeTask()`, computes `taskId` with the agreed scheme, and fires `runStream()` in the background rather than awaiting the whole stream inline — the response comes back as soon as a `taskId` exists, and the caller polls the status endpoint below for progress. Request body: `{ taskDescription, clientAddress, category?, bondAmountUsdc?, maxCalls? }`.
 
 ### Phase 3.5 — Status endpoint for Frontend (H7, H8)
 
-Frontend needs live stream progress. Expose a simple SSE or polling endpoint:
+**Implemented**: `GET /stream-status/:taskId` in `backend/stream/entrypoint.ts`, backed by the in-memory store in `backend/stream/state.ts`:
 
-```js
-app.get("/stream-status/:taskId", (req, res) => {
-  res.json({
-    taskId: req.params.taskId,
-    phase: currentPhase,        // "committed" | "streaming" | "revealed" | "settled"
-    callsCompleted: callCount,
-    lastQualityScore: lastScore,
-    lastLatencyMs: lastLatency,
-    predictionMet: finalVerdict, // null until revealed
-    bondStatus: bondStatus,      // "posted" | "released" | "slashed"
-    commitTxHash,
-    revealTxHash,
-  });
-});
+```ts
+{
+  taskId, phase,              // "committing" | "streaming" | "revealed" | "settled" | "failed"
+  callsCompleted, lastQualityScore, lastLatencyMs,
+  predictionMet,              // null until revealed
+  bondStatus,                 // "posted" | "released" | "slashed" | null
+  commitTxHash, revealTxHash, error,
+}
 ```
+
+`GET /streams` lists every session (newest first) for the Dashboard page. Note the store is in-memory per-process — an entrypoint restart loses in-flight progress, though on-chain commit/reveal state is unaffected since that lives in AthenaCommit itself.
 
 **Phase 3 exit criteria:** a single POST to `/stream-task` with a valid x402 payment triggers the full automated flow — Athena discovers providers, commits on-chain, streams nanopayments, MCP monitor evaluates, reveals, bond resolves — zero manual steps. Confirm together (H9).
 
