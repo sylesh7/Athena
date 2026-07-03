@@ -30,7 +30,7 @@ Use this as your live tracker. Update it as you complete each item.
 - [x] `contracts/scripts/register-agents.ts` run → all 4 agents registered on ERC-8004
 - [x] `shared/addresses.json` `agents` section filled with tokenIds (broker: 845252, p1: 845255, p2: 845256, p3: 845257)
 - [x] **Ping Frontend with tokenIds** (H5)
-- [ ] ERC-8183 manual flow tested (createJob → setBudget → fund → submit → complete/reject)
+- [x] ERC-8183 manual flow tested — jobId 147246: createJob → setBudget → fund → submit → complete ✓ (1 USDC released to provider1)
 - [ ] `contracts/scripts/post-reputation.ts` run → first reputation feedback posted
 - [ ] **Full manual loop with team** — commit → stream → reveal → slash/release working live (H6)
 
