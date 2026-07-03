@@ -1,18 +1,25 @@
 import Image from "next/image";
 import Reveal from "./Reveal";
+import ParallaxLayer from "./ParallaxLayer";
+import HeroTilt from "./HeroTilt";
+import { GLSLHills } from "./ui/glsl-hills";
 
 const IMG = "/image";
 
 export function Hero() {
   return (
     <header className="hero" id="top">
-      <div className="hero-bg" />
-      <div className="hero-orb-swirl" />
+      <ParallaxLayer speed={0.12} className="hero-bg-layer">
+        <GLSLHills />
+        <div className="hero-bg" />
+      </ParallaxLayer>
       <div className="hero-stars" />
       <div className="hero-grid" />
-      <div className="hero-content">
-        <h1 className="hero-wordmark">ATHENA</h1>
-      </div>
+      <HeroTilt className="hero-tilt">
+        <ParallaxLayer speed={0.3} fade className="hero-content">
+          <h1 className="hero-wordmark">ATHENA</h1>
+        </ParallaxLayer>
+      </HeroTilt>
       <div className="scroll-cue" />
     </header>
   );
@@ -135,7 +142,7 @@ export function Divisions() {
         <div className="track" style={{ fontSize: "clamp(1.6rem,4vw,3.4rem)", color: "var(--muted)" }}>
           {Array.from({ length: 4 }).map((_, i) => (
             <span key={i}>
-              The Protocol <span>*</span>{" "}
+              COMMIT <span>*</span> STREAM <span>*</span> SETTLE <span>*</span>{" "}
             </span>
           ))}
         </div>
