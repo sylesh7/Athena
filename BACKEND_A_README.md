@@ -26,10 +26,10 @@ Use this as your live tracker. Update it as you complete each item.
 - [x] `forge inspect AthenaCommit abi > shared/abis/AthenaCommit.json` — ABI exported
 - [x] **Ping Backend B + Frontend with address** (H4)
 - [x] Integration test: `commit()` → `reveal()` → `withdraw()` on real Arc RPC — all passing
-- [ ] Provider wallet addresses received from Backend B (H2)
-- [ ] `contracts/scripts/register-agents.ts` run → all 4 agents registered on ERC-8004
-- [ ] `shared/addresses.json` `agents` section filled with tokenIds
-- [ ] **Ping Frontend with tokenIds** (H5)
+- [x] Provider wallet addresses received from Backend B (H2)
+- [x] `contracts/scripts/register-agents.ts` run → all 4 agents registered on ERC-8004
+- [x] `shared/addresses.json` `agents` section filled with tokenIds (broker: 845252, p1: 845255, p2: 845256, p3: 845257)
+- [x] **Ping Frontend with tokenIds** (H5)
 - [ ] ERC-8183 manual flow tested (createJob → setBudget → fund → submit → complete/reject)
 - [ ] `contracts/scripts/post-reputation.ts` run → first reputation feedback posted
 - [ ] **Full manual loop with team** — commit → stream → reveal → slash/release working live (H6)
@@ -45,10 +45,10 @@ Use this as your live tracker. Update it as you complete each item.
 - [ ] Circle Iris attestation polled + `receiveMessage()` called on Base
 
 ### Handoffs owed to teammates
-- [ ] **H1** → Both: function signatures + taskId scheme (Phase 1 sync)
-- [ ] **H3** → Backend B: taskId exact encoding agreed
-- [ ] **H4** → Both: deployed address + ABI **actively pinged** (not just committed)
-- [ ] **H5** → Frontend: agent tokenIds in `shared/addresses.json` **actively pinged**
+- [x] **H1** → Both: function signatures + taskId scheme (Phase 1 sync)
+- [x] **H3** → Backend B: taskId exact encoding agreed
+- [x] **H4** → Both: deployed address + ABI **actively pinged** (not just committed)
+- [x] **H5** → Frontend: agent tokenIds in `shared/addresses.json` **actively pinged**
 - [ ] **H6** → All: manual loop confirmed working live
 
 ---

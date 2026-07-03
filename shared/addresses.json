@@ -21,7 +21,40 @@
     "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
     "create2Factory": "0x4e59b44847b379578588920cA78FbF26c0B4956C"
   },
-  "agents": {},
+  "agents": {
+    "broker": {
+      "address": "0x588F6b3169F60176c1143f8BaB47bCf3DeEbECdc",
+      "tokenId": "845252",
+      "name": "Athena Broker",
+      "role": "broker",
+      "registrationTx": "0xde0933c789e39a3ed11ca5fc1351a6ae18b83f6110df6352c818a2cea5f829a2",
+      "arcscan": "https://testnet.arcscan.app/tx/0xde0933c789e39a3ed11ca5fc1351a6ae18b83f6110df6352c818a2cea5f829a2"
+    },
+    "provider1": {
+      "address": "0x1721E4e606C891b4CaA72b294eea39EAEC719899",
+      "tokenId": "845255",
+      "name": "Athena Crypto Provider",
+      "role": "provider",
+      "registrationTx": "0xada2dbe2a608544360e508aa8dd257394aa4257508f719db4d010c1407f8d70d",
+      "arcscan": "https://testnet.arcscan.app/tx/0xada2dbe2a608544360e508aa8dd257394aa4257508f719db4d010c1407f8d70d"
+    },
+    "provider2": {
+      "address": "0xb7521922B2E86f7CAF39D3Cca998744779F68fd6",
+      "tokenId": "845256",
+      "name": "Athena Market Analytics Provider",
+      "role": "provider",
+      "registrationTx": "0xe9d76fe7a0e17e7b47e881e4cd2b47a3daf4595081d43f6d97063f441ca2e661",
+      "arcscan": "https://testnet.arcscan.app/tx/0xe9d76fe7a0e17e7b47e881e4cd2b47a3daf4595081d43f6d97063f441ca2e661"
+    },
+    "provider3": {
+      "address": "0x1188ff3cd11F2184Cb7FC1a3dE7Cbeb8666E9bb5",
+      "tokenId": "845257",
+      "name": "Athena Price Feed Provider",
+      "role": "provider",
+      "registrationTx": "0x5b60fb0486c6c3fedf7320ce5b8541879d4cd61788de3146e49683b1efb99865",
+      "arcscan": "https://testnet.arcscan.app/tx/0x5b60fb0486c6c3fedf7320ce5b8541879d4cd61788de3146e49683b1efb99865"
+    }
+  },
   "backendWallets": {
     "broker": {
       "address": "0x27594e2b85e53d3a80095ac25DaD4d8a379F64A3",

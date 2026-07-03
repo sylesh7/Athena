@@ -26,11 +26,13 @@ const ADDRESSES_PATH = join(__dirname, "../../shared/addresses.json");
 // ── Arc Testnet chain definition ──────────────────────────────────────────────
 // NOTE: nativeCurrency decimals = 18 (native interface). ERC-20 USDC is 6 decimals.
 // Never use native balance for payment amounts — always read ERC-20 balanceOf.
+const CANTEEN_RPC = process.env.RPC ?? "https://rpc.testnet.arc-node.thecanteenapp.com/v1/swrm_8c204da93fca2d8c58651fbf1fae35596838c36c8e21c04a8cea977489432adb";
+
 const arcTestnet = {
   id: 5042002,
   name: "Arc Testnet",
   nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
-  rpcUrls: { default: { http: ["https://rpc.testnet.arc.network"] } },
+  rpcUrls: { default: { http: [CANTEEN_RPC] } },
   blockExplorers: { default: { name: "Arcscan", url: "https://testnet.arcscan.app" } },
 } as const;
 
@@ -118,6 +120,7 @@ async function registerAgent(
     abi: identityRegistryAbi,
     functionName: "register",
     args: [metadataURI],
+    chain: arcTestnet as any,
   });
 
   console.log(`  tx: ${txHash}`);
@@ -127,7 +130,7 @@ async function registerAgent(
 
   // Parse tokenId from Transfer event (from=0x0 = mint)
   const transferLog = receipt.logs.find(
-    (log) =>
+    (log: { address: string; topics: (string | undefined)[] }) =>
       log.address.toLowerCase() === IDENTITY_REGISTRY.toLowerCase() &&
       log.topics[1] === "0x0000000000000000000000000000000000000000000000000000000000000000"
   );
@@ -149,9 +152,14 @@ async function main() {
   console.log("");
 
   const addresses = JSON.parse(readFileSync(ADDRESSES_PATH, "utf8"));
-  addresses.agents = {};
+  if (!addresses.agents) addresses.agents = {};
 
   for (const agent of AGENT_DEFS) {
+    if (addresses.agents[agent.key]?.tokenId) {
+      console.log(`  ✓ ${agent.key} already registered (tokenId: ${addresses.agents[agent.key].tokenId}) — skipping`);
+      console.log("");
+      continue;
+    }
     const pkEnv = process.env[agent.envKey];
     if (!pkEnv) {
       console.warn(`⚠  Skipping ${agent.key}: ${agent.envKey} not set`);
