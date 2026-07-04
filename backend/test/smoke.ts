@@ -96,18 +96,30 @@ async function tier0() {
     return "read-only call succeeded, returned false as expected";
   });
 
-  await check("0", "wallets in .env.local are well-formed and self-consistent", async () => {
-    const roles = ["BROKER", "PROVIDER1", "PROVIDER2", "PROVIDER3"] as const;
+  await check("0", "broker wallet (plain EOA) is well-formed and self-consistent", async () => {
+    const pk = requireEnv("BROKER_PK") as `0x${string}`;
+    const declaredAddress = requireEnv("BROKER_WALLET_ADDRESS");
+    if (!/^0x[0-9a-fA-F]{64}$/.test(pk)) throw new Error("BROKER_PK is not a 32-byte hex key");
+    const derived = privateKeyToAccount(pk).address;
+    if (derived.toLowerCase() !== declaredAddress.toLowerCase()) {
+      throw new Error(`BROKER_WALLET_ADDRESS (${declaredAddress}) does not match address derived from BROKER_PK (${derived})`);
+    }
+    return `BROKER=${derived} (raw PK — required for GatewayClient.pay(), which can't use Circle custody)`;
+  });
+
+  await check("0", "provider wallets (Circle-custodied) have valid addresses", async () => {
+    // Providers never sign anything (createGatewayMiddleware only needs an
+    // address to receive payment at), so unlike the broker there's no
+    // private key to cross-check here — these are real Circle
+    // Developer-Controlled Wallets, see wallets/setupCircleProviders.ts.
+    const { isAddress } = await import("viem");
     const lines: string[] = [];
-    for (const role of roles) {
-      const pk = requireEnv(`${role}_PK`) as `0x${string}`;
-      const declaredAddress = requireEnv(`${role}_WALLET_ADDRESS`);
-      if (!/^0x[0-9a-fA-F]{64}$/.test(pk)) throw new Error(`${role}_PK is not a 32-byte hex key`);
-      const derived = privateKeyToAccount(pk).address;
-      if (derived.toLowerCase() !== declaredAddress.toLowerCase()) {
-        throw new Error(`${role}_WALLET_ADDRESS (${declaredAddress}) does not match address derived from ${role}_PK (${derived})`);
-      }
-      lines.push(`${role}=${derived}`);
+    for (const role of ["PROVIDER1", "PROVIDER2", "PROVIDER3"] as const) {
+      const address = requireEnv(`${role}_WALLET_ADDRESS`);
+      const walletId = process.env[`${role}_WALLET_ID`];
+      if (!isAddress(address)) throw new Error(`${role}_WALLET_ADDRESS (${address}) is not a valid checksummed address`);
+      if (!walletId) throw new Error(`${role}_WALLET_ID is not set — was wallets:circle-providers run?`);
+      lines.push(`${role}=${address}`);
     }
     return lines.join(", ");
   });
@@ -336,7 +348,7 @@ async function tier4() {
   // would hang this check (and the whole suite) indefinitely rather than
   // failing loudly. Explicit `timeout` below is required, not decorative.
   const { createPublicClient, http, formatEther } = await import("viem");
-  const baseSepoliaRpc = process.env.BASE_SEPOLIA_RPC ?? "https://sepolia.base.org";
+  const baseSepoliaRpc = process.env.BASE_SEPOLIA_RPC || "https://sepolia.base.org"; // see crossChainPayout.ts comment on || vs ??
   const baseSepoliaClient = createPublicClient({ transport: http(baseSepoliaRpc, { timeout: 5000 }) });
 
   await check("4", "Base Sepolia RPC reachable + correct chainId", async () => {

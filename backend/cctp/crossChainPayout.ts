@@ -48,7 +48,11 @@ const IRIS_API_BASE = "https://iris-api-sandbox.circle.com";
 // deployed via CREATE2 at identical addresses across every supported chain.
 // Confirmed via Circle's contract-addresses reference (not assumed).
 const BASE_SEPOLIA_MESSAGE_TRANSMITTER = "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275" as const;
-const BASE_SEPOLIA_RPC = process.env.BASE_SEPOLIA_RPC ?? "https://sepolia.base.org";
+// `||`, not `??` — an empty-but-declared BASE_SEPOLIA_RPC= in .env is "" (a
+// defined string), which `??` would happily pass through instead of falling
+// back to the default. Same class of bug lib/chain.ts's rpcUrl() already
+// guards against.
+const BASE_SEPOLIA_RPC = process.env.BASE_SEPOLIA_RPC || "https://sepolia.base.org";
 
 const baseSepolia = {
   id: 84532,

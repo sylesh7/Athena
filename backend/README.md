@@ -18,16 +18,18 @@ files and OpenAPI specs, not just the pseudocode in the top-level README).
    `erc8183JobId`/`deliverableHash` params — there's no separate
    `ERC8183.complete()/reject()` call to make afterward. `streamLoop.ts`
    calls `reveal()` once and that's the whole settlement.
-3. **Circle wallet custody.** Wallets here are plain local EOAs
-   (`wallets/setup.ts`, generated with viem), not Circle-custodied
-   Developer-Controlled Wallets. Circle's DCW SDK deliberately doesn't
-   expose a raw private key, but `GatewayClient` itself takes a raw
-   `privateKey`, and so does everything else in this repo (Deploy.s.sol,
-   `contracts/scripts/register-agents.ts`, `post-reputation.ts`). Mixing
-   custody models would mean those scripts silently can't sign for
-   Circle-managed wallets. Circle CLI's `wallet fund` / `gateway deposit`
-   commands work against any address regardless of who holds the key, so
-   this loses nothing.
+3. **Circle wallet custody — split by role, not all-or-nothing.** The
+   broker is a plain local EOA (`wallets/setup.ts`, generated with viem):
+   `GatewayClient.pay()` requires a raw `privateKey` in its constructor
+   (verified against the real published `.d.ts`), which Circle-custodied
+   Developer-Controlled Wallets structurally cannot provide. Providers,
+   however, never sign anything — `createGatewayMiddleware({ sellerAddress
+   })` only needs an address to receive payment at — so they *are* real
+   Circle DCW wallets (`wallets/setupCircleProviders.ts`), created and
+   registered on ERC-8004 without needing a raw key at all (registration
+   signs via Circle's `createContractExecutionTransaction`, not viem —
+   `contracts/scripts/register-agents.ts` can't do this, see
+   `HANDOFF_BACKEND_A.md`).
 4. **CCTP V2's `depositForBurn` takes `destinationCaller` as `bytes32`, not
    `address`** — the original README pseudocode passed a 20-byte zero
    address where the real, deployed function needs a 32-byte value.
@@ -44,7 +46,7 @@ files and OpenAPI specs, not just the pseudocode in the top-level README).
 ```
 backend/
 ├── lib/            config.ts (shared/addresses.json + ABI loader), chain.ts (Arc viem clients)
-├── wallets/        setup.ts — generates broker + 3 provider EOAs (Phase 1.1)
+├── wallets/        setup.ts (broker EOA), setupCircleProviders.ts + fundCircleProviders.ts + registerCircleProviders.ts (3 provider Circle DCW wallets), generateEntitySecret.ts
 ├── agents/         broker.ts (routeTask), provider1/2/3.ts (x402 endpoints), providerServer.ts (shared scaffolding)
 ├── mcp-monitor/    monitor.py (FastMCP quality monitor), client.ts (TS client for it)
 ├── stream/         streamLoop.ts (runStream), state.ts (status store), entrypoint.ts (Express app)
@@ -57,22 +59,40 @@ backend/
 cd backend
 npm install
 cp .env.example .env
-npm run wallets:setup        # generates backend/.env.local — DO NOT COMMIT
+npm run wallets:setup                   # broker EOA -> backend/.env.local — DO NOT COMMIT
+
+# Entity secret (once): generates the ciphertext, registration itself is
+# manual via the Circle Developer Portal (see wallets/generateEntitySecret.ts)
+npm run wallets:entity-secret
+
+# Provider wallets — real Circle Developer-Controlled Wallets, not EOAs:
+npm run wallets:circle-providers        # creates 3 wallets on ARC-TESTNET
+npm run wallets:circle-fund             # requests faucet funds (may 403 on some
+                                         # API keys — fund manually via
+                                         # faucet.circle.com if so)
+npm run wallets:circle-register-agents  # registers them on ERC-8004 —
+                                         # writes shared/addresses.json's
+                                         # "agents" section (see that
+                                         # script's header for why this one
+                                         # touches Backend A's file)
 
 pip install -r mcp-monitor/requirements.txt
 ```
 
-Fund every address `wallets:setup` prints (see its own printed instructions —
-faucet, `circle wallet fund`, and a Gateway deposit for the broker wallet
-only). Then approve the broker wallet to spend USDC for the bond (also
-printed by the script).
+Fund the broker address `wallets:setup` prints (faucet, `circle wallet
+fund`, and a Gateway deposit — see its own printed instructions). Then
+approve the broker wallet to spend USDC for the bond (also printed).
 
 ### Handoffs this unblocks
 
-**H2 → Backend A:** the 3 provider addresses printed by `wallets:setup`.
-Backend A also needs `BROKER_PK`/`PROVIDER{1,2,3}_PK` from
-`backend/.env.local` as `DEPLOYER_PK`/`PROVIDERn_PK` to run
-`contracts/scripts/register-agents.ts` — that script doesn't read this
+**H2 → Backend A:** see `HANDOFF_BACKEND_A.md` — the 3 provider addresses
+are already funded and ERC-8004-registered as of this writing; no action
+needed there unless you regenerate them.
+
+Backend A also needs the broker's `BROKER_PK` from `backend/.env.local` as
+`DEPLOYER_PK` only if they ever need to re-run
+`contracts/scripts/register-agents.ts` for the broker itself — that script
+doesn't read this
 package's env files automatically, the values have to be copied over.
 
 **H7/H8 → Frontend:** `GET /stream-status/:taskId` on the entrypoint
