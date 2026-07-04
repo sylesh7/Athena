@@ -1,6 +1,8 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAccount, useConnect, useDisconnect, injected } from "wagmi";
 import { arcTestnet } from "@/lib/wagmi";
@@ -44,6 +46,9 @@ async function switchOrAddArcTestnet() {
 
 export default function Nav() {
   const bar = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+  const router = useRouter();
+  const isLanding = pathname === "/";
   const { address, isConnected, chainId } = useAccount();
   const { connect, isPending: isConnecting } = useConnect();
   const { disconnect } = useDisconnect();
@@ -53,6 +58,12 @@ export default function Nav() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (isConnected && isLanding) {
+      router.push("/dashboard");
+    }
+  }, [isConnected, isLanding, router]);
 
   useEffect(() => {
     const onScroll = () => {
@@ -99,22 +110,49 @@ export default function Nav() {
       </a>
       <div className="nav-spacer" />
       <div className="nav-links">
-        <a className="nav-item nav-cta" href="#about">
-          <span className="label">ABOUT</span>
-          <span className="num">001</span>
-        </a>
-        <a className="nav-item icon-only" href="#" aria-label="Discord">
-          <Image src="/image/63b814185c10040da13cafe8_discord.svg" alt="Discord" width={20} height={20} />
-          <span className="num">002</span>
-        </a>
-        <a className="nav-item icon-only" href="#" aria-label="Twitter">
-          <Image src="/image/63b814185c1004911d3cafe2_twitter.svg" alt="Twitter" width={20} height={20} />
-          <span className="num">003</span>
-        </a>
-        <button type="button" className="nav-item nav-cta" onClick={handleWalletClick}>
-          <span className="label">{walletLabel}</span>
-          <span className="num">004</span>
-        </button>
+        {isLanding ? (
+          <>
+            <a className="nav-item nav-cta" href="#about">
+              <span className="label">ABOUT</span>
+              <span className="num">001</span>
+            </a>
+            <a className="nav-item icon-only" href="#" aria-label="Discord">
+              <Image src="/image/63b814185c10040da13cafe8_discord.svg" alt="Discord" width={20} height={20} />
+              <span className="num">002</span>
+            </a>
+            <a className="nav-item icon-only" href="#" aria-label="Twitter">
+              <Image src="/image/63b814185c1004911d3cafe2_twitter.svg" alt="Twitter" width={20} height={20} />
+              <span className="num">003</span>
+            </a>
+            <button type="button" className="nav-item nav-cta" onClick={handleWalletClick}>
+              <span className="label">{walletLabel}</span>
+              <span className="num">004</span>
+            </button>
+          </>
+        ) : (
+          <>
+            <Link className="nav-item nav-cta" href="/dashboard">
+              <span className="label">DASHBOARD</span>
+              <span className="num">001</span>
+            </Link>
+            <Link className="nav-item nav-cta" href="/agents">
+              <span className="label">AGENT ROSTER</span>
+              <span className="num">002</span>
+            </Link>
+            <Link className="nav-item nav-cta" href="/live">
+              <span className="label">LIVE STREAM VIEW</span>
+              <span className="num">003</span>
+            </Link>
+            <Link className="nav-item nav-cta" href="/new-stream">
+              <span className="label">NEW STREAM</span>
+              <span className="num">004</span>
+            </Link>
+            <button type="button" className="nav-item nav-cta" onClick={handleWalletClick}>
+              <span className="label">{walletLabel}</span>
+              <span className="num">005</span>
+            </button>
+          </>
+        )}
       </div>
     </nav>
   );
