@@ -1,6 +1,9 @@
 # Backend B → Frontend handoff
 
-Confirmed working end-to-end via `backend/test/smoke.ts` (19/19 checks passing)
+*Updated 2026-07-04 — provider addresses changed (Circle Developer-Controlled
+Wallets swap) and Phase 4 (CCTP) landed since the first version of this doc.*
+
+Confirmed working end-to-end via `backend/test/smoke.ts` (23/23 checks passing)
 against the live deployed `AthenaCommit` at
 `0x1cFC54256F28C76891891a266c03AD8ceA63D416` on Arc Testnet.
 
@@ -60,6 +63,13 @@ NOT wait for it to finish):
   error: string | null,                  // set if phase === "failed"
   createdAt: number,                     // ms epoch
   updatedAt: number,
+
+  // Phase 4 (stretch, Provider 3 only) — absent entirely unless
+  // ENABLE_CCTP_PAYOUT is on and this stream routed to Provider 3.
+  cctpStatus?: "pending" | "burned" | "attested" | "minted" | "failed",
+  cctpBurnTxHash?: `0x${string}`,   // Arc — show as "Cross-chain" badge source
+  cctpMintTxHash?: `0x${string}`,   // Base Sepolia
+  cctpError?: string,
 }
 ```
 
@@ -82,32 +92,36 @@ streams have run yet (not an error).
 
 ## Provider / agent info for Agent Roster page
 
-These are plain EOA wallets (not yet ERC-8004-registered — that's pending
-Backend A running `register-agents.ts` with the addresses in
-`HANDOFF_BACKEND_A.md`):
+All 4 are funded and ERC-8004-registered as of 2026-07-04. Providers 1-3
+are real Circle Developer-Controlled Wallets (`custody: "circle-dcw"` in
+`shared/addresses.json`'s `agents` section); the broker is a plain EOA
+(needs a raw key to sign Gateway payments, which Circle custody can't
+provide):
 
-| Role | Address | Endpoint |
-|---|---|---|
-| Broker | `0x27594e2b85e53d3a80095ac25DaD4d8a379F64A3` | — (calls `commit()`/`reveal()`, runs the entrypoint) |
-| Provider 1 (crypto price) | `0x1721E4e606C891b4CaA72b294eea39EAEC719899` | `/price/usdc-eth` |
-| Provider 2 (market analytics) | `0xb7521922B2E86f7CAF39D3Cca998744779F68fd6` | `/analytics/eth` |
-| Provider 3 (price feed, aggregated) | `0x1188ff3cd11F2184Cb7FC1a3dE7Cbeb8666E9bb5` | `/price/feed` |
+| Role | Address | tokenId | Endpoint |
+|---|---|---|---|
+| Broker | `0x27594e2b85e53d3a80095ac25DaD4d8a379F64A3` | 845252 | — (calls `commit()`/`reveal()`, runs the entrypoint) |
+| Provider 1 (crypto price) | `0xd99503382bc9861d80e816a05944187f491be11e` | 845540 | `/price/usdc-eth` |
+| Provider 2 (market analytics) | `0x697e72ab770b6fd2f345cb9946c7418818117f7d` | 845541 | `/analytics/eth` |
+| Provider 3 (price feed, aggregated) | `0xa0322b206190735eaf6b8a37ea138e2614e15d6f` | 845542 | `/price/feed` |
 
-None of these wallets are funded yet — balances will read 0 until faucet +
-Gateway deposit happens (see `backend/README.md`). Don't treat a 0 balance
-as a bug in your reads.
+Read `shared/addresses.json`'s `agents` section rather than hardcoding
+these — it's the source of truth and could change again.
 
 ## Known limitations, so you don't chase phantom bugs
 
 - `/stream-status` and `/streams` are in-memory per-process — a backend
   restart clears them. On-chain data (`commitments(taskId)` on
   `AthenaCommit`) is unaffected.
-- No live stream has actually been run end-to-end yet (wallets are unfunded
-  and not yet on the Circle Agent Marketplace) — everything above is
-  verified structurally (real HTTP calls, real contract reads, real MCP
-  monitor logic) but not yet a real financial stream. `bondStatus`/
-  `predictionMet` will stay `null` until that happens.
+- No live stream has actually been run end-to-end yet — everything above
+  is verified structurally (real HTTP calls, real contract reads, real MCP
+  monitor logic, real funded/registered wallets) but not yet a real
+  financial stream. `bondStatus`/`predictionMet` will stay `null` until
+  that happens. `GET /streams` currently returns `[]`.
 - `shared/abis/AthenaCommit.json` was invalid JSON (a pretty-printed text
-  table, not an ABI array) as of the last time you may have pulled it —
-  it's fixed now. If your `import athenaCommitAbi from ".../AthenaCommit.json"`
-  ever throws a parse error again, that file regressed — ping Backend A.
+  table, not an ABI array) at one point — it's fixed now. If your
+  `import athenaCommitAbi from ".../AthenaCommit.json"` ever throws a parse
+  error again, that file regressed — ping Backend A.
+- Broker's own USDC/native balance is still 0 (unfunded) — the smoke
+  test's Tier 0 funding check will flag this; it needs a faucet drip before
+  a real `commit()` can happen (it pays gas + the bond).

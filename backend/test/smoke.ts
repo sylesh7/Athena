@@ -23,7 +23,7 @@ import { encodePacked, keccak256, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { addresses, athenaCommitAbi } from "../lib/config.js";
 import { publicClient, requireEnv } from "../lib/chain.js";
-import { getFinalVerdict, recordCallResult } from "../mcp-monitor/client.js";
+import { closeMcpClient, getFinalVerdict, recordCallResult } from "../mcp-monitor/client.js";
 
 type Status = "PASS" | "FAIL" | "SKIP";
 interface Result {
@@ -96,18 +96,30 @@ async function tier0() {
     return "read-only call succeeded, returned false as expected";
   });
 
-  await check("0", "wallets in .env.local are well-formed and self-consistent", async () => {
-    const roles = ["BROKER", "PROVIDER1", "PROVIDER2", "PROVIDER3"] as const;
+  await check("0", "broker wallet (plain EOA) is well-formed and self-consistent", async () => {
+    const pk = requireEnv("BROKER_PK") as `0x${string}`;
+    const declaredAddress = requireEnv("BROKER_WALLET_ADDRESS");
+    if (!/^0x[0-9a-fA-F]{64}$/.test(pk)) throw new Error("BROKER_PK is not a 32-byte hex key");
+    const derived = privateKeyToAccount(pk).address;
+    if (derived.toLowerCase() !== declaredAddress.toLowerCase()) {
+      throw new Error(`BROKER_WALLET_ADDRESS (${declaredAddress}) does not match address derived from BROKER_PK (${derived})`);
+    }
+    return `BROKER=${derived} (raw PK — required for GatewayClient.pay(), which can't use Circle custody)`;
+  });
+
+  await check("0", "provider wallets (Circle-custodied) have valid addresses", async () => {
+    // Providers never sign anything (createGatewayMiddleware only needs an
+    // address to receive payment at), so unlike the broker there's no
+    // private key to cross-check here — these are real Circle
+    // Developer-Controlled Wallets, see wallets/setupCircleProviders.ts.
+    const { isAddress } = await import("viem");
     const lines: string[] = [];
-    for (const role of roles) {
-      const pk = requireEnv(`${role}_PK`) as `0x${string}`;
-      const declaredAddress = requireEnv(`${role}_WALLET_ADDRESS`);
-      if (!/^0x[0-9a-fA-F]{64}$/.test(pk)) throw new Error(`${role}_PK is not a 32-byte hex key`);
-      const derived = privateKeyToAccount(pk).address;
-      if (derived.toLowerCase() !== declaredAddress.toLowerCase()) {
-        throw new Error(`${role}_WALLET_ADDRESS (${declaredAddress}) does not match address derived from ${role}_PK (${derived})`);
-      }
-      lines.push(`${role}=${derived}`);
+    for (const role of ["PROVIDER1", "PROVIDER2", "PROVIDER3"] as const) {
+      const address = requireEnv(`${role}_WALLET_ADDRESS`);
+      const walletId = process.env[`${role}_WALLET_ID`];
+      if (!isAddress(address)) throw new Error(`${role}_WALLET_ADDRESS (${address}) is not a valid checksummed address`);
+      if (!walletId) throw new Error(`${role}_WALLET_ID is not set — was wallets:circle-providers run?`);
+      lines.push(`${role}=${address}`);
     }
     return lines.join(", ");
   });
@@ -310,6 +322,49 @@ async function tier3() {
   });
 }
 
+// ── Tier 4: CCTP (Phase 4, stretch) — read-only reachability only ──────────
+// Never triggers a real depositForBurn/receiveMessage here: those cost real
+// gas and the attestation wait can take up to 3 hours. See
+// cctp/crossChainPayout.ts and its manual test script for the real flow.
+
+async function tier4() {
+  await check("4", "Iris v2 attestation API reachable", async () => {
+    // A well-formed but nonexistent tx hash — any structured JSON response
+    // (200 with empty messages, or 404) proves the endpoint is live and
+    // shaped as documented; only a network failure is a real problem here.
+    const bogusTxHash = "0x" + "0".repeat(64);
+    const res = await fetchWithTimeout(
+      `https://iris-api-sandbox.circle.com/v2/messages/26?transactionHash=${bogusTxHash}`,
+      {},
+      5000
+    );
+    if (res.status !== 200 && res.status !== 404) {
+      throw new Error(`expected 200 or 404, got ${res.status}`);
+    }
+    return `https://iris-api-sandbox.circle.com/v2/messages/26 -> HTTP ${res.status}`;
+  });
+
+  // viem's http() transport has no timeout by default — an unresponsive RPC
+  // would hang this check (and the whole suite) indefinitely rather than
+  // failing loudly. Explicit `timeout` below is required, not decorative.
+  const { createPublicClient, http, formatEther } = await import("viem");
+  const baseSepoliaRpc = process.env.BASE_SEPOLIA_RPC || "https://sepolia.base.org"; // see crossChainPayout.ts comment on || vs ??
+  const baseSepoliaClient = createPublicClient({ transport: http(baseSepoliaRpc, { timeout: 5000 }) });
+
+  await check("4", "Base Sepolia RPC reachable + correct chainId", async () => {
+    const chainId = await baseSepoliaClient.getChainId();
+    if (chainId !== 84532) throw new Error(`expected chainId 84532 (Base Sepolia), got ${chainId}`);
+    return `${baseSepoliaRpc} -> chainId ${chainId}`;
+  });
+
+  await check("4", "broker's Base Sepolia funding status (informational)", async () => {
+    const address = requireEnv("BROKER_WALLET_ADDRESS") as `0x${string}`;
+    const balance = await baseSepoliaClient.getBalance({ address });
+    const flag = balance === 0n ? " ⚠ needs Base Sepolia ETH before ENABLE_CCTP_PAYOUT will work" : "";
+    return `${formatEther(balance)} ETH${flag}`;
+  });
+}
+
 // ── Runner ────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -318,6 +373,7 @@ async function main() {
   await tier1();
   await tier2();
   await tier3();
+  await tier4();
 
   const icon: Record<Status, string> = { PASS: "✅", FAIL: "❌", SKIP: "⚠️ " };
   let hardFailures = 0;
@@ -337,6 +393,11 @@ async function main() {
   const failed = results.filter((r) => r.status === "FAIL").length;
   const skipped = results.filter((r) => r.status === "SKIP").length;
   console.log(`\n${passed} passed, ${failed} failed, ${skipped} skipped\n`);
+
+  // Tier 2's MCP client holds an open streamable-http connection that
+  // otherwise keeps the process alive indefinitely after this prints —
+  // close it before any exit path so `npm test` actually terminates.
+  await closeMcpClient();
 
   if (hardFailures > 0) {
     console.error(`${hardFailures} Tier 0/0.5 failure(s) — base wiring is broken, fix before demoing.`);
