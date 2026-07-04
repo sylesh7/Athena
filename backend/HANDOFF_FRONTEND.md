@@ -100,7 +100,7 @@ provide):
 
 | Role | Address | tokenId | Endpoint |
 |---|---|---|---|
-| Broker | `0x27594e2b85e53d3a80095ac25DaD4d8a379F64A3` | 845252 | — (calls `commit()`/`reveal()`, runs the entrypoint) |
+| Broker | `0x27594e2b85e53d3a80095ac25DaD4d8a379F64A3` | 845598 | — (calls `commit()`/`reveal()`, runs the entrypoint) |
 | Provider 1 (crypto price) | `0xd99503382bc9861d80e816a05944187f491be11e` | 845540 | `/price/usdc-eth` |
 | Provider 2 (market analytics) | `0x697e72ab770b6fd2f345cb9946c7418818117f7d` | 845541 | `/analytics/eth` |
 | Provider 3 (price feed, aggregated) | `0xa0322b206190735eaf6b8a37ea138e2614e15d6f` | 845542 | `/price/feed` |

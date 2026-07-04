@@ -32,10 +32,35 @@ structurally cannot register these. I used
 `createContractExecutionTransaction` API. Nothing else about the
 registration differs — same contract, same function, same metadata shape.
 
-The broker is unaffected — still the plain EOA from the original handoff
-below (`GatewayClient.pay()`, from `@circle-fin/x402-batching`, requires a
-raw private key and structurally cannot use Circle custody, verified
-against the real published `.d.ts`).
+The broker stays a plain EOA (`GatewayClient.pay()`, from
+`@circle-fin/x402-batching`, requires a raw private key and structurally
+cannot use Circle custody, verified against the real published `.d.ts`) —
+but its ERC-8004 identity was wrong and I fixed that too, see next.
+
+## Found and fixed: broker's ERC-8004 identity didn't match its actual wallet
+
+`register-agents.ts`'s `broker` entry uses `envKey: "DEPLOYER_PK"` — it
+registered *your* deploy key (`0x588F6b3169F60176c1143f8BaB47bCf3DeEbECdc`,
+tokenId `845252`), not the wallet that actually signs `commit()`/`reveal()`
+in `stream/streamLoop.ts` (`0x27594e2b85e53d3a80095ac25DaD4d8a379F64A3`).
+Confirmed on-chain via `IdentityRegistry.ownerOf(845252)` before touching
+anything — it really did return `0x588F...`, not our broker address.
+
+Since the broker is a plain EOA with a real key (unlike providers), I
+registered it correctly myself with `wallets/registerBroker.ts` — same
+`register-agents.ts` logic, just signed with the actual `BROKER_PK`:
+
+```
+broker: 0x27594e2b85e53d3a80095ac25DaD4d8a379F64A3  tokenId 845598
+```
+
+`shared/addresses.json`'s `agents.broker` now reflects this. The old
+tokenId `845252` is still valid on-chain, owned by your deploy key — it's
+just unreferenced anywhere in this project now. I also removed the
+`backendWallets` section from `shared/addresses.json` entirely — it was a
+pre-registration staging area that had become an exact duplicate of
+`agents` once every wallet (broker + all 3 providers) had a real,
+corrected registration there.
 
 ## H3 — taskId scheme: confirmed byte-for-byte match
 
@@ -88,16 +113,16 @@ both reachable. No live financial stream has run yet — that's next.
 
 ---
 
-## Original H2 handoff (superseded above, kept for the broker info + history)
+## Orphaned registrations (still valid on-chain, no longer referenced anywhere)
 
-Broker (plain EOA, unchanged):
+Two ERC-8004 registrations from earlier in the project are now unlinked
+from any config — not broken, just superseded:
 
-```
-broker: 0x27594e2b85e53d3a80095ac25DaD4d8a379F64A3
-```
+| tokenId | address | what it was |
+|---|---|---|
+| 845252 | `0x588F6b3169F60176c1143f8BaB47bCf3DeEbECdc` | old broker identity — your deploy key, not the operational broker wallet |
+| 845255-845257 | the original 3 EOA providers | superseded by the Circle DCW providers above |
 
-If you still have the original 3 EOA provider wallets registered
-(tokenIds 845255-845257), those remain valid on-chain and funded — they're
-just no longer the addresses Backend B's providers actually run as. Their
-keys are preserved as `PROVIDER{1,2,3}_LEGACY_PK` /
-`_LEGACY_WALLET_ADDRESS` in `backend/.env.local`.
+The old provider EOA keys are preserved as `PROVIDER{1,2,3}_LEGACY_PK` /
+`_LEGACY_WALLET_ADDRESS` in `backend/.env.local` — still funded, still
+registered, just not part of the active flow.

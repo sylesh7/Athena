@@ -1,20 +1,26 @@
 /**
- * wallets/setup.ts — Phase 1.1: broker + 3 provider agent wallets.
+ * wallets/setup.ts — Phase 1.1: broker agent wallet.
  *
- * Design note on custody: Circle's Developer-Controlled Wallets are
- * Circle-custodied — the SDK deliberately does not hand you a raw exportable
- * private key. Every other signing surface in this repo (Deploy.s.sol,
- * contracts/scripts/register-agents.ts, contracts/scripts/post-reputation.ts,
- * and the stream loop below) is built around raw-PK signing via viem/forge.
- * Mixing custody models would mean register-agents.ts silently can't sign for
- * these wallets. So we generate plain local EOAs here instead — same trust
- * model as every other wallet in the project, and Circle CLI's
- * `wallet fund` / `gateway deposit` commands work against any address
- * regardless of who holds the key.
+ * Broker-only. Providers moved to Circle Developer-Controlled Wallets (see
+ * wallets/setupCircleProviders.ts) — they never sign anything
+ * (createGatewayMiddleware only needs an address to receive payment at), so
+ * there's no reason for them to be plain EOAs. The broker stays a plain EOA
+ * because GatewayClient.pay() (from @circle-fin/x402-batching) requires a
+ * raw private key in its constructor — verified against the real published
+ * .d.ts, Circle custody structurally cannot provide one.
  *
- * Idempotent: if backend/.env.local already has wallets, this refuses to
- * regenerate them (pass --force to override) — overwriting a funded testnet
- * wallet's key is unrecoverable and would silently strand its balance.
+ * This used to also generate 3 provider EOAs and stage a "backendWallets"
+ * section in shared/addresses.json. Both are gone now — worth knowing if
+ * you're wondering where that went: the provider EOAs it used to make are
+ * preserved as PROVIDER{1,2,3}_LEGACY_PK / _LEGACY_WALLET_ADDRESS in
+ * .env.local (still funded, still ERC-8004-registered under their old
+ * tokenIds, just no longer part of the active flow), and the
+ * "backendWallets" section was pure duplication of shared/addresses.json's
+ * "agents" section once every agent had a real registration there.
+ *
+ * Idempotent: if backend/.env.local already has BROKER_PK, this refuses to
+ * regenerate it (pass --force to override) — overwriting a funded,
+ * ERC-8004-registered wallet's key is unrecoverable.
  *
  * Usage:
  *   npm run wallets:setup
@@ -29,14 +35,6 @@ import { loadAddresses } from "../lib/config.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ENV_LOCAL_PATH = join(__dirname, "..", ".env.local");
-const ADDRESSES_PATH = join(__dirname, "../../shared/addresses.json");
-
-const ROLES = [
-  { key: "broker", envPrefix: "BROKER", name: "Athena Broker" },
-  { key: "provider1", envPrefix: "PROVIDER1", name: "Athena Crypto Provider" },
-  { key: "provider2", envPrefix: "PROVIDER2", name: "Athena Market Analytics Provider" },
-  { key: "provider3", envPrefix: "PROVIDER3", name: "Athena Price Feed Provider" },
-] as const;
 
 function parseEnvFile(path: string): Record<string, string> {
   if (!existsSync(path)) return {};
@@ -51,80 +49,62 @@ function parseEnvFile(path: string): Record<string, string> {
   return out;
 }
 
+// Upserts KEY=VALUE, preserving every other line (legacy provider entries,
+// RPC_URL, entity secret, comments) exactly as-is.
+function upsertEnvLine(path: string, key: string, value: string) {
+  const lines = existsSync(path) ? readFileSync(path, "utf8").split("\n") : [];
+  const idx = lines.findIndex((l) => l.trim().startsWith(`${key}=`));
+  const newLine = `${key}=${value}`;
+  if (idx === -1) {
+    if (lines.length && lines[lines.length - 1] === "") lines.pop();
+    lines.push(newLine, "");
+  } else {
+    lines[idx] = newLine;
+  }
+  writeFileSync(path, lines.join("\n"));
+}
+
 function main() {
   const force = process.argv.includes("--force");
   const existing = parseEnvFile(ENV_LOCAL_PATH);
 
-  const alreadySet = ROLES.every((r) => existing[`${r.envPrefix}_PK`]);
-  if (alreadySet && !force) {
-    console.log("Wallets already exist in backend/.env.local — skipping generation.");
-    console.log("(pass --force to regenerate; this abandons any funds on the old wallets)\n");
-    printSummary(
-      ROLES.map((r) => ({
-        ...r,
-        address: existing[`${r.envPrefix}_WALLET_ADDRESS`]!,
-      }))
-    );
+  if (existing.BROKER_PK && !force) {
+    console.log("BROKER_PK already exists in backend/.env.local — skipping generation.");
+    console.log("(pass --force to regenerate; this abandons the funded, ERC-8004-registered wallet)\n");
+    printSummary(existing.BROKER_WALLET_ADDRESS!);
     return;
   }
 
-  console.log("=== Athena Backend B — Wallet Setup (Phase 1.1) ===\n");
+  console.log("=== Athena Backend B — Broker Wallet Setup (Phase 1.1) ===\n");
 
-  const generated = ROLES.map((r) => {
-    const pk = generatePrivateKey();
-    const account = privateKeyToAccount(pk);
-    return { ...r, pk, address: account.address };
-  });
+  const pk = generatePrivateKey();
+  const address = privateKeyToAccount(pk).address;
 
-  const lines = [
-    "# Generated by `npm run wallets:setup` — DO NOT COMMIT",
-    ...generated.flatMap((g) => [`${g.envPrefix}_PK=${g.pk}`, `${g.envPrefix}_WALLET_ADDRESS=${g.address}`]),
-    "",
-  ];
-  writeFileSync(ENV_LOCAL_PATH, lines.join("\n"));
-  console.log(`Wrote ${ROLES.length} wallets to backend/.env.local\n`);
+  upsertEnvLine(ENV_LOCAL_PATH, "BROKER_PK", pk);
+  upsertEnvLine(ENV_LOCAL_PATH, "BROKER_WALLET_ADDRESS", address);
+  console.log("Wrote BROKER_PK / BROKER_WALLET_ADDRESS to backend/.env.local\n");
 
-  // Stage addresses (not keys) into shared/addresses.json so Backend A can read
-  // them for H2 without private keys ever leaving this file. register-agents.ts
-  // overwrites the "agents" key with tokenIds once it runs — this is a separate,
-  // pre-registration staging area.
-  const addressesFile = JSON.parse(readFileSync(ADDRESSES_PATH, "utf8"));
-  addressesFile.backendWallets = Object.fromEntries(
-    generated.map((g) => [g.key, { address: g.address, name: g.name, role: g.key === "broker" ? "broker" : "provider" }])
-  );
-  writeFileSync(ADDRESSES_PATH, JSON.stringify(addressesFile, null, 2) + "\n");
-  console.log("Staged addresses into shared/addresses.json under \"backendWallets\"\n");
-
-  printSummary(generated);
+  printSummary(address);
 }
 
-function printSummary(wallets: { key: string; name: string; address: string }[]) {
+function printSummary(address: string) {
   const addresses = loadAddresses();
 
-  console.log("── Wallet addresses ─────────────────────────────────────────");
-  for (const w of wallets) console.log(`  ${w.key.padEnd(10)} ${w.address}  (${w.name})`);
+  console.log(`Broker wallet: ${address}\n`);
 
-  console.log("\n── Next steps (run for EACH address above) ────────────────────");
+  console.log("── Next steps ──────────────────────────────────────────────");
   console.log("  1. Fund with testnet USDC (native gas + ERC-20 balance):");
   console.log("       Faucet: https://faucet.circle.com (select Arc Testnet)");
-  console.log("       or:     circle wallet fund --address $ADDR --chain ARC-TESTNET\n");
-  console.log("  2. Broker wallet ONLY — deposit into Gateway (funds the stream's");
-  console.log("     nanopayments; providers do not need a Gateway deposit):");
-  console.log(
-    `       circle gateway deposit --amount 10 --address ${wallets[0]?.address} --chain ARC-TESTNET --method direct\n`
-  );
-  console.log("  3. Broker wallet ONLY — approve AthenaCommit to pull the bond:");
+  console.log(`       or:     circle wallet fund --address ${address} --chain ARC-TESTNET\n`);
+  console.log("  2. Deposit into Gateway (funds the stream's nanopayments):");
+  console.log(`       circle gateway deposit --amount 10 --address ${address} --chain ARC-TESTNET --method direct\n`);
+  console.log("  3. Approve AthenaCommit to pull the bond:");
   console.log(
     `       cast send ${addresses.contracts.usdc} "approve(address,uint256)" ${addresses.contracts.athenaCommit} <bondAmount> --rpc-url arc_testnet --private-key $BROKER_PK\n`
   );
-
-  console.log("── H2 handoff → send this to Backend A ─────────────────────────");
-  for (const w of wallets.filter((w) => w.key !== "broker")) {
-    console.log(`  ${w.key}: ${w.address}  (role: provider)`);
-  }
-  console.log("\n  Backend A needs these to run: cd contracts/scripts && npm run register");
-  console.log("  (that script also needs BROKER_PK/PROVIDER{1,2,3}_PK as DEPLOYER_PK/PROVIDERn_PK —");
-  console.log("   copy them from backend/.env.local into that command's environment, it is not read automatically)");
+  console.log("  4. Register on ERC-8004 (if not already): npm run wallets:register-broker");
+  console.log("     (contracts/scripts/register-agents.ts's DEPLOYER_PK slot registers Backend");
+  console.log("      A's own deploy key, not this wallet — see wallets/registerBroker.ts's header)");
 }
 
 main();

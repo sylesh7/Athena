@@ -23,12 +23,12 @@
   },
   "agents": {
     "broker": {
-      "address": "0x588F6b3169F60176c1143f8BaB47bCf3DeEbECdc",
-      "tokenId": "845252",
+      "address": "0x27594e2b85e53d3a80095ac25DaD4d8a379F64A3",
+      "tokenId": "845598",
       "name": "Athena Broker",
       "role": "broker",
-      "registrationTx": "0xde0933c789e39a3ed11ca5fc1351a6ae18b83f6110df6352c818a2cea5f829a2",
-      "arcscan": "https://testnet.arcscan.app/tx/0xde0933c789e39a3ed11ca5fc1351a6ae18b83f6110df6352c818a2cea5f829a2"
+      "registrationTx": "0x046407a29d133464ac072a2b168c7f75f9b25e3fcef8c83b00b218752292ac05",
+      "arcscan": "https://testnet.arcscan.app/tx/0x046407a29d133464ac072a2b168c7f75f9b25e3fcef8c83b00b218752292ac05"
     },
     "provider1": {
       "address": "0xd99503382bc9861d80e816a05944187f491be11e",
@@ -59,31 +59,6 @@
       "arcscan": "https://testnet.arcscan.app/tx/0x7797934b538019220f7aa40424c9acff65dd7044e7da7e9df96c1bcc2b6841ab",
       "custody": "circle-dcw",
       "circleWalletId": "5a8eb02b-4abd-5478-8a2f-9607392e15d9"
-    }
-  },
-  "backendWallets": {
-    "broker": {
-      "address": "0x27594e2b85e53d3a80095ac25DaD4d8a379F64A3",
-      "name": "Athena Broker",
-      "role": "broker"
-    },
-    "provider1": {
-      "address": "0xd99503382bc9861d80e816a05944187f491be11e",
-      "name": "Athena Crypto Provider",
-      "role": "provider",
-      "custody": "circle-dcw"
-    },
-    "provider2": {
-      "address": "0x697e72ab770b6fd2f345cb9946c7418818117f7d",
-      "name": "Athena Market Analytics Provider",
-      "role": "provider",
-      "custody": "circle-dcw"
-    },
-    "provider3": {
-      "address": "0xa0322b206190735eaf6b8a37ea138e2614e15d6f",
-      "name": "Athena Price Feed Provider",
-      "role": "provider",
-      "custody": "circle-dcw"
     }
   }
 }
