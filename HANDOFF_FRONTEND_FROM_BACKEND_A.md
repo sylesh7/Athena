@@ -6,6 +6,44 @@
 
 ---
 
+## What Backend A Has Completed (Full Status)
+
+### ✅ Phase 1 — Contracts Written & Compiled
+- `contracts/src/AthenaCommit.sol` — full commit-reveal-slash bond contract, all functions public
+- `contracts/src/interfaces/IERC8183.sol` — ERC-8183 job escrow interface (7 functions)
+- `contracts/src/interfaces/IERC8004.sol` — IdentityRegistry, ReputationRegistry, ValidationRegistry interfaces
+- `contracts/test/AthenaCommit.t.sol` — **29 unit tests, all passing** (`forge test -vvv`)
+- `contracts/script/Deploy.s.sol` — deploy script
+- `shared/addresses.json` — all Arc Testnet contract addresses populated
+- Team synced on function signatures + taskId scheme
+
+### ✅ Phase 2 — Deployed & Integrated on Arc Testnet
+- **AthenaCommit deployed:** `0x1cFC54256F28C76891891a266c03AD8ceA63D416`
+- **ABI exported** to `shared/abis/AthenaCommit.json` (valid JSON array — safe to import)
+- **Integration test PASSED** on live Arc Testnet:
+  - `commit()` → tx confirmed on-chain
+  - `reveal(predictionMet=true)` → bond credited to broker
+  - `withdraw()` → 1 USDC returned to broker wallet
+  - `isRevealed()` → `true` ✓
+- **All 4 agents registered on ERC-8004 IdentityRegistry:**
+  - Broker: tokenId `845598` — tx `0x046407...`
+  - Provider 1: tokenId `845540` — tx `0x87917d...`
+  - Provider 2: tokenId `845541` — tx `0xd1f67e...`
+  - Provider 3: tokenId `845542` — tx `0x77979...`
+- **ERC-8183 full flow tested on live Arc Testnet** (jobId 147246):
+  - `createJob()` → jobId 147246
+  - `setBudget(1 USDC)` → budget set
+  - `approve + fund()` → 1 USDC locked in escrow
+  - `submit()` → deliverable hash submitted by provider1
+  - `complete()` → 1 USDC released to provider1, status = Completed ✓
+- **ERC-8004 reputation feedback posted:** provider1 rated 90/100 — tx `0x9420e8...`
+- **Handoffs H1, H3, H4, H5 all done** — teammates have everything they need
+
+### ⏳ Only Remaining Item
+- **H6 — Full manual team loop** (all 3 teammates on a call together): Frontend submits a task via UI → Backend B auto-runs commit/stream/reveal → Backend A confirms on Arcscan
+
+---
+
 ## 1. Deployed Contract — AthenaCommit
 
 | Field | Value |
