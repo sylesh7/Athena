@@ -20,6 +20,7 @@
 import { randomUUID, webcrypto } from "node:crypto";
 import { parseAbi, type Hex } from "viem";
 import { GatewayClient } from "@circle-fin/x402-batching/client";
+import { payProvider3OnBase } from "../cctp/crossChainPayout.js";
 import { addresses, athenaCommitAbi } from "../lib/config.js";
 import { publicClient, walletClientFromPk } from "../lib/chain.js";
 import { recordCallResult, getFinalVerdict } from "../mcp-monitor/client.js";
@@ -165,6 +166,33 @@ export async function runStream(config: StreamConfig): Promise<StreamResult> {
     predictionMet: prediction_met,
     bondStatus: prediction_met ? "released" : "slashed",
   });
+
+  // 6. Phase 4 (stretch): pay Provider 3 natively on Base Sepolia via CCTP,
+  // instead of the Arc Gateway nanopayments already streamed. Opt-in
+  // (ENABLE_CCTP_PAYOUT) and Provider-3-only, since it needs the broker
+  // wallet separately funded with Base Sepolia ETH and can take up to the
+  // README's 3-hour timebox — never blocks this function's return, and a
+  // failure here doesn't touch `phase`/`error`, which describe the
+  // already-settled Arc-side stream, not this separate cross-chain leg.
+  const isProvider3 = config.decision.selectedProvider.address.toLowerCase() === (process.env.PROVIDER3_WALLET_ADDRESS ?? "").toLowerCase();
+  if (prediction_met && isProvider3 && process.env.ENABLE_CCTP_PAYOUT === "true") {
+    updateStream(config.taskId, { cctpStatus: "pending" });
+    payProvider3OnBase({
+      brokerPk: config.brokerPk,
+      amountUnits: config.bondAmountUnits,
+      recipientAddress: config.decision.selectedProvider.address,
+    })
+      .then(({ burnTxHash, mintTxHash }) => {
+        updateStream(config.taskId, { cctpStatus: "minted", cctpBurnTxHash: burnTxHash, cctpMintTxHash: mintTxHash });
+      })
+      .catch((err) => {
+        console.error(`CCTP payout failed for stream ${config.taskId}:`, err);
+        updateStream(config.taskId, {
+          cctpStatus: "failed",
+          cctpError: err instanceof Error ? err.message : String(err),
+        });
+      });
+  }
 
   return { predictionMet: prediction_met, commitTxHash, revealTxHash, callsCompleted };
 }

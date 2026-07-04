@@ -9,6 +9,10 @@
 export type StreamPhase = "committing" | "streaming" | "revealed" | "settled" | "failed";
 export type BondStatus = "posted" | "released" | "slashed";
 
+// Phase 4 (stretch, Provider 3 only) — see cctp/crossChainPayout.ts.
+// Absent entirely for streams that never triggered a cross-chain payout.
+export type CctpStatus = "pending" | "burned" | "attested" | "minted" | "failed";
+
 export interface StreamStatus {
   taskId: `0x${string}`;
   phase: StreamPhase;
@@ -25,6 +29,10 @@ export interface StreamStatus {
   error: string | null;
   createdAt: number;
   updatedAt: number;
+  cctpStatus?: CctpStatus;
+  cctpBurnTxHash?: `0x${string}`;
+  cctpMintTxHash?: `0x${string}`;
+  cctpError?: string;
 }
 
 const streams = new Map<string, StreamStatus>();

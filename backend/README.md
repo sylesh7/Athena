@@ -1,10 +1,11 @@
 # Athena Backend B
 
-Implements BACKEND_B_README.md Phases 1–3: agent wallets, x402 provider
-endpoints, the MCP quality monitor, and the stream loop. No mocks — every
-provider fetches real data from public APIs, and every on-chain/x402/MCP
-call goes through the real published SDKs (verified against their actual
-`.d.ts` files, not just the pseudocode in the top-level README).
+Implements BACKEND_B_README.md Phases 1–4: agent wallets, x402 provider
+endpoints, the MCP quality monitor, the stream loop, and the CCTP
+cross-chain payout stretch goal. No mocks — every provider fetches real
+data from public APIs, and every on-chain/x402/MCP/CCTP call goes through
+the real published SDKs and APIs (verified against their actual `.d.ts`
+files and OpenAPI specs, not just the pseudocode in the top-level README).
 
 ## Two corrections made while implementing this
 
@@ -27,6 +28,16 @@ call goes through the real published SDKs (verified against their actual
    Circle-managed wallets. Circle CLI's `wallet fund` / `gateway deposit`
    commands work against any address regardless of who holds the key, so
    this loses nothing.
+4. **CCTP V2's `depositForBurn` takes `destinationCaller` as `bytes32`, not
+   `address`** — the original README pseudocode passed a 20-byte zero
+   address where the real, deployed function needs a 32-byte value.
+   Confirmed by pulling the actual verified implementation ABI from
+   Arcscan, not from memory.
+5. **`minFinalityThreshold: 1000` is "Fast" (Confirmed), not "Standard"** as
+   the README's inline comment claimed — confirmed against Circle's CCTP
+   V2 technical guide. Standard/Finalized is `2000`, and only `2000` is
+   compatible with `maxFee: 0` (Fast requires a nonzero fee/allowance).
+   `cctp/crossChainPayout.ts` uses `2000`.
 
 ## Layout
 
@@ -36,7 +47,8 @@ backend/
 ├── wallets/        setup.ts — generates broker + 3 provider EOAs (Phase 1.1)
 ├── agents/         broker.ts (routeTask), provider1/2/3.ts (x402 endpoints), providerServer.ts (shared scaffolding)
 ├── mcp-monitor/    monitor.py (FastMCP quality monitor), client.ts (TS client for it)
-└── stream/         streamLoop.ts (runStream), state.ts (status store), entrypoint.ts (Express app)
+├── stream/         streamLoop.ts (runStream), state.ts (status store), entrypoint.ts (Express app)
+└── cctp/           crossChainPayout.ts (Phase 4: burn on Arc -> Iris attestation -> mint on Base Sepolia), manualPayout.ts (standalone trigger)
 ```
 
 ## Setup
@@ -103,6 +115,40 @@ Then poll:
 
 ```bash
 curl http://localhost:3000/stream-status/<taskId>
+```
+
+## Phase 4 (stretch): CCTP cross-chain payout
+
+After a stream to Provider 3 settles with `predictionMet=true`, Athena can
+optionally pay Provider 3 natively on Base Sepolia instead of Arc, via
+Circle's CCTP V2: burn USDC on Arc's `TokenMessengerV2`, wait for Circle's
+Iris attestation, then mint on Base Sepolia's `MessageTransmitterV2`. Every
+ABI and API shape here was pulled from live sources (Arcscan's verified
+contract API, Circle's published CCTP OpenAPI spec) rather than trusted
+from the README pseudocode — see the corrections list above.
+
+**Off by default** (`ENABLE_CCTP_PAYOUT=false` in `.env.example`) — turning
+it on requires:
+- The broker wallet funded with **Base Sepolia ETH** for gas (separate from
+  its Arc gas — same address, different chain, different faucet).
+- Patience: Standard Transfer finality can take a while; the whole flow is
+  timeboxed at 3 hours (`pollAttestation`'s default), matching the
+  README's guidance to show the burn tx on Arcscan as proof of mechanism
+  if the mint doesn't land live during a demo.
+
+When it fires (`stream/streamLoop.ts`'s post-reveal hook, Provider-3-only),
+it runs in the background — it never blocks the stream's own settlement,
+and a CCTP failure only sets `cctpStatus: "failed"` / `cctpError`, not the
+stream's own `phase`/`error` (the Arc-side stream already succeeded; the
+cross-chain leg is a separate concern layered on top). `GET
+/stream-status/:taskId` exposes `cctpStatus` (`pending` → `minted`/`failed`),
+`cctpBurnTxHash`, `cctpMintTxHash` for the frontend's "Cross-chain" badge.
+
+To test the burn → attest → mint flow on its own, without running a full
+stream:
+
+```bash
+npm run cctp:payout -- --amount 1.0
 ```
 
 ## Known limitations (real, not hidden)

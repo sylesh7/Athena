@@ -28,9 +28,16 @@ function rpcUrl(): string {
   return process.env.RPC_URL || addresses.rpc_public;
 }
 
+// Explicit timeout matters here: viem's http() transport has no timeout by
+// default, so an unresponsive RPC (a Canteen proxy hiccup, a network blip)
+// would otherwise hang every caller — the stream loop, the entrypoint,
+// the smoke test — indefinitely instead of erroring in a way retry/backoff
+// or an operator can actually see and act on.
+const RPC_TIMEOUT_MS = 10_000;
+
 export const publicClient = createPublicClient({
   chain: arcTestnet,
-  transport: http(),
+  transport: http(undefined, { timeout: RPC_TIMEOUT_MS }),
 });
 
 export function walletClientFromPk(pk: `0x${string}`) {
@@ -38,7 +45,7 @@ export function walletClientFromPk(pk: `0x${string}`) {
   return createWalletClient({
     account,
     chain: arcTestnet,
-    transport: http(),
+    transport: http(undefined, { timeout: RPC_TIMEOUT_MS }),
   });
 }
 

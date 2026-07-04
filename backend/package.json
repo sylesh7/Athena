@@ -12,7 +12,8 @@
     "entrypoint": "tsx stream/entrypoint.ts",
     "dev": "concurrently -n provider1,provider2,provider3,entrypoint -c blue,green,yellow,magenta \"npm:provider1\" \"npm:provider2\" \"npm:provider3\" \"npm:entrypoint\"",
     "typecheck": "tsc --noEmit",
-    "test": "tsx test/smoke.ts"
+    "test": "tsx test/smoke.ts",
+    "cctp:payout": "tsx cctp/manualPayout.ts"
   },
   "dependencies": {
     "@circle-fin/developer-controlled-wallets": "^10.8.0",

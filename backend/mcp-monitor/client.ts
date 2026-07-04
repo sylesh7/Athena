@@ -44,6 +44,21 @@ export interface StreamProgress {
 // would otherwise pay a fresh MCP initialize handshake.
 let clientPromise: Promise<Client> | null = null;
 
+/**
+ * Closes the shared MCP connection, if one was ever opened. The
+ * long-running entrypoint process never needs this (the connection lives
+ * for the server's lifetime), but short-lived scripts (test/smoke.ts,
+ * one-off CLI tools) should call this before exiting — otherwise the
+ * streamable-http transport's open connection keeps Node's event loop
+ * alive and the process never exits on its own.
+ */
+export async function closeMcpClient(): Promise<void> {
+  if (!clientPromise) return;
+  const client = await clientPromise;
+  await client.close();
+  clientPromise = null;
+}
+
 function getClient(monitorUrl: string): Promise<Client> {
   if (!clientPromise) {
     clientPromise = (async () => {
