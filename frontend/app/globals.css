@@ -43,8 +43,9 @@ img{max-width:100%;display:block}
 .nav-links{display:flex}
 .nav-item{
   position:relative;display:flex;align-items:center;justify-content:center;gap:.6rem;
-  padding:0 clamp(1rem,2.2vw,2.6rem);border-left:1px solid var(--line);
+  padding:0 clamp(1rem,2.2vw,2.6rem);border-left:1px solid var(--line);border-top:none;border-right:none;border-bottom:none;
   font-size:.78rem;letter-spacing:.22em;font-weight:500;overflow:hidden;cursor:pointer;white-space:nowrap;
+  background:none;color:inherit;font-family:inherit;height:100%;
 }
 .nav-item .num{position:absolute;left:.6rem;bottom:.5rem;font-size:.55rem;color:var(--muted-2);letter-spacing:.1em}
 .nav-item .label{position:relative;z-index:2;transition:color .4s}

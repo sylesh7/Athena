@@ -1,10 +1,58 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useAccount, useConnect, useDisconnect, injected } from "wagmi";
+import { arcTestnet } from "@/lib/wagmi";
+
+function truncate(address: string) {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+async function switchOrAddArcTestnet() {
+  const ethereum = (window as unknown as { ethereum?: any }).ethereum;
+  if (!ethereum) return;
+  const chainIdHex = `0x${arcTestnet.id.toString(16)}`;
+  try {
+    await ethereum.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: chainIdHex }],
+    });
+  } catch (switchError: any) {
+    if (switchError?.code === 4902) {
+      try {
+        await ethereum.request({
+          method: "wallet_addEthereumChain",
+          params: [
+            {
+              chainId: chainIdHex,
+              chainName: arcTestnet.name,
+              nativeCurrency: arcTestnet.nativeCurrency,
+              rpcUrls: arcTestnet.rpcUrls.default.http,
+              blockExplorerUrls: [arcTestnet.blockExplorers.default.url],
+            },
+          ],
+        });
+      } catch (addError) {
+        console.error("Failed to add Arc Testnet to wallet:", addError);
+      }
+    } else {
+      console.error("Failed to switch to Arc Testnet:", switchError);
+    }
+  }
+}
 
 export default function Nav() {
   const bar = useRef<HTMLDivElement>(null);
+  const { address, isConnected, chainId } = useAccount();
+  const { connect, isPending: isConnecting } = useConnect();
+  const { disconnect } = useDisconnect();
+  const [isSwitching, setIsSwitching] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const onScroll = () => {
@@ -16,6 +64,32 @@ export default function Nav() {
     onScroll();
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  const wrongNetwork = isConnected && chainId !== arcTestnet.id;
+
+  const handleWalletClick = async () => {
+    if (!isConnected) {
+      connect({ connector: injected(), chainId: arcTestnet.id });
+    } else if (wrongNetwork) {
+      setIsSwitching(true);
+      await switchOrAddArcTestnet();
+      setIsSwitching(false);
+    } else {
+      disconnect();
+    }
+  };
+
+  const walletLabel = !mounted
+    ? "CONNECT WALLET"
+    : !isConnected
+      ? isConnecting
+        ? "CONNECTING..."
+        : "CONNECT WALLET"
+      : wrongNetwork
+        ? isSwitching
+          ? "SWITCHING..."
+          : "SWITCH TO ARC"
+        : truncate(address!);
 
   return (
     <nav className="nav">
@@ -37,10 +111,10 @@ export default function Nav() {
           <Image src="/image/63b814185c1004911d3cafe2_twitter.svg" alt="Twitter" width={20} height={20} />
           <span className="num">003</span>
         </a>
-        <a className="nav-item nav-cta" href="#">
-          <span className="label">CONNECT WALLET</span>
+        <button type="button" className="nav-item nav-cta" onClick={handleWalletClick}>
+          <span className="label">{walletLabel}</span>
           <span className="num">004</span>
-        </a>
+        </button>
       </div>
     </nav>
   );
