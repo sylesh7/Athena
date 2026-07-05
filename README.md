@@ -1,8 +1,4 @@
-# Athena
-### Trust-minimized streaming agent broker on Arc · Lepton Agents Hackathon
-**Deadline:** July 6, 2026, 11:59 PM ET · **Submission:** forms.gle/SMqLaw2pMGDe58LFA
-**Team:** Backend A (contracts) · Backend B (payments/stream/agents) · Frontend (dashboard)
-
+# Athena - Trust-minimized streaming agent broker on Arc · Lepton Agents Hackathon
 Athena is a trust-minimized agent broker on Arc that routes work between independently built x402-protected agents, commits its routing logic and prediction before execution, and uses USDC collateral plus on-chain reveal to make broker trust verifiable instead of assumed.
 
 ---
@@ -11,9 +7,6 @@ Athena is a trust-minimized agent broker on Arc that routes work between indepen
 
 AI agent brokers are already causing expensive mistakes, fraud, and fast operational damage, but there is still no trust-minimized way to prove that a broker routed honestly, predicted responsibly, and accepted financial consequences when it was wrong.
 
-## Intro
-
-As AI agents move from chat tools to economic actors, the hard problem is no longer just whether an agent can do the task. The harder problem is whether we can trust the broker that selects, routes, and vouches for other agents, especially when real money and real decisions are involved. Athena is built for that gap: it makes broker decisions commit-reveal based, collateral-backed, and reputation-aware so routing becomes economically accountable on-chain.
 
 ## Market context
 
