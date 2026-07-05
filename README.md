@@ -1,5 +1,5 @@
 # Athena - Trust-minimized streaming agent broker on Arc · Lepton Agents Hackathon
-Athena is a trust-minimized agent broker on Arc that routes work between independently built x402-protected agents, commits its routing logic and prediction before execution, and uses USDC collateral plus on-chain reveal to make broker trust verifiable instead of assumed.
+>Athena is a trust-minimized agent broker on Arc that routes work between independently built x402-protected agents, commits its routing logic and prediction before execution, and uses USDC collateral plus on-chain reveal to make broker trust verifiable instead of assumed.
 
 ---
 
@@ -7,30 +7,42 @@ Athena is a trust-minimized agent broker on Arc that routes work between indepen
 
 AI agent brokers are already causing expensive mistakes, fraud, and fast operational damage, but there is still no trust-minimized way to prove that a broker routed honestly, predicted responsibly, and accepted financial consequences when it was wrong.
 
+---
 
 ## Market context
 
-| Problem area | Real stat | What happened | Why Athena matters |
-|---|---|---|---|
-| Expensive agent failures | 64% of billion-dollar enterprises reported losing more than $1M from AI agent failures in the past year. | Agents and brokers are being trusted with decisions that humans cannot audit fast enough. | Athena forces the broker to commit to routing reasoning and prediction before execution, then reveals it later and slashes the bond if it lied or mispredicted. |
-| AI fraud and bot-driven abuse | Consumer fraud losses reached $12.5 billion, and nearly 60% of companies reported increased losses from 2024 to 2025. | "Machine-to-machine mayhem" is making it harder to tell legitimate agent activity from fraud in commerce flows. | Athena seals broker decisions on-chain and backs them with collateral, making agent-to-agent routing auditable instead of blind. |
-| Fast autonomous damage | Confirmed AI agent financial security incidents produced about $15.6 million in documented losses. | Agentic systems can move too quickly once they have real access, with prompt injection and integration weaknesses causing rapid damage. | Athena limits broker-side harm by making routing decisions, predictions, and reputation updates tamper-evident and financially accountable. |
+| Problem area | Real stat | Why Athena matters |
+|---|---|---|
+| Expensive agent failures | **64%** of billion-dollar enterprises lost more than **$1M** from AI agent failures last year | Broker commits reasoning on-chain before execution; bond slashed if it lied or mispredicted |
+| AI fraud and bot-driven abuse | Consumer fraud losses hit **$12.5B**; **60%** of companies saw increased losses in 2024–2025 | Every broker decision sealed on-chain and collateral-backed — no silent misrouting |
+| Fast autonomous damage | Confirmed AI agent security incidents produced **~$15.6M** in documented losses | Routing decisions, predictions, and reputation updates are tamper-evident and financially accountable |
 
-### Three problem layers
+---
 
-**1) Broker trust failures cause expensive AI mistakes.** AI agent failures are already costing real money at enterprise scale: a SalesforceBen-cited research summary says 64% of billion-dollar enterprises lost more than $1M because of AI agent failures in the past year. The pattern is usually not one dramatic hack; it is an agent or broker making opaque, poorly supervised, or overconfident decisions that humans cannot easily audit in time. Athena solves this by forcing the broker to commit to its routing reasoning and prediction before the task runs, then revealing that reasoning later and slashing the broker's USDC bond if the reveal does not match the commit or the prediction fails.
+## Three problem layers
 
-**2) AI-driven fraud is becoming a billion-dollar problem.** Experian's 2026 fraud forecast, reported by Fortune, says consumer fraud losses reached $12.5 billion, and nearly 60% of companies reported increased losses from 2024 to 2025. The report warns about "machine-to-machine mayhem," where good bots and bad bots interact in the same commerce flow, making it harder to tell legitimate actions from fraud. Athena reduces this trust gap by requiring every broker decision to be sealed on-chain and backed by collateral, so a broker cannot quietly route to a bad provider, claim a false rationale, and walk away without financial consequences.
+**1) Broker trust failures cost enterprises millions.**
+64% of billion-dollar enterprises lost more than $1M from AI agent failures in the past year. The cause is not dramatic hacks — it is opaque routing humans cannot audit in time. Athena forces the broker to commit reasoning on-chain before the task runs and slashes its USDC bond on a bad reveal.
 
-**3) Agentic systems can cause fast, high-impact damage.** Regent Protocol's 2023–2026 incident analysis says confirmed AI agent financial security incidents have produced about $15.6 million in documented losses. That incident corpus highlights weaknesses like inability to verify AI autonomy, integration-point vulnerabilities, and prompt-injection susceptibility, which can cause rapid damage once agents are given real access. Athena does not try to solve every agent security issue; it specifically reduces broker-side harm by making routing decisions, outcome predictions, and reputation updates tamper-evident and financially accountable on Arc.
+**2) AI-driven fraud is a $12.5B problem.**
+Experian's 2026 forecast puts consumer fraud losses at $12.5B, with 60% of companies reporting year-over-year increases. Athena closes the trust gap by requiring every broker decision to be sealed on-chain and backed by collateral before execution.
+
+**3) Autonomous agents cause rapid, hard-to-reverse damage.**
+Confirmed AI agent incidents total ~$15.6M in losses, driven by prompt injection, integration vulnerabilities, and unverifiable autonomy. Athena reduces broker-side harm by making routing decisions, outcome predictions, and reputation updates tamper-evident on Arc.
+
+---
 
 ## What Athena does
 
-Athena sits between a client and multiple independent agent services. The broker evaluates available providers, forms a routing decision, makes a falsifiable prediction about the task outcome, hashes that reasoning, and commits it on-chain before the task runs. After the provider finishes, the broker reveals the reasoning, the contract checks whether the reveal matches the commitment and whether the prediction was correct, and the USDC bond is either released or slashed automatically.
+The broker evaluates providers, makes a falsifiable outcome prediction, hashes the decision, and commits it on-chain before the task runs. After the provider finishes, the broker reveals the reasoning — the contract verifies the hash match and prediction accuracy — and the USDC bond is released or slashed automatically.
+
+---
 
 ## How it solves the problem
 
-Athena solves three related issues at once. First, opaque routing: the broker can no longer silently choose providers for hidden reasons because it must commit to its reasoning first. Second, overconfident promises: the broker must stake USDC on its prediction, so inaccurate judgment has a financial cost. Third, weak accountability: the bond and reveal make the routing decision auditable, not just logged in a private dashboard.
+- **Opaque routing** — broker must commit reasoning before selecting a provider; silent misrouting is impossible.
+- **Overconfident promises** — broker stakes USDC on its prediction; wrong judgment has a direct financial cost.
+- **Weak accountability** — bond and reveal make routing auditable on-chain, not just logged in a private dashboard.
 
 ## What is used
 
