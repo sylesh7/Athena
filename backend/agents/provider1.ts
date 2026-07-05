@@ -5,13 +5,14 @@
 
 import "../lib/config.js"; // loads .env / .env.local before anything reads process.env
 import { requireEnv } from "../lib/chain.js";
+import { coinGeckoFetch } from "../lib/coingecko.js";
 import { createProviderApp, type ProviderCallResult } from "./providerServer.js";
 
 const PORT = Number(process.env.PROVIDER1_PORT ?? 3001);
 const SELLER_ADDRESS = requireEnv("PROVIDER1_WALLET_ADDRESS");
 
 async function fetchUsdcEthPrice(): Promise<ProviderCallResult> {
-  const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd");
+  const res = await coinGeckoFetch("/simple/price?ids=ethereum&vs_currencies=usd");
   if (!res.ok) throw new Error(`CoinGecko returned ${res.status}`);
 
   const json = (await res.json()) as { ethereum?: { usd?: number } };

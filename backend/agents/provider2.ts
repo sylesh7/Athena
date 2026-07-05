@@ -5,6 +5,7 @@
 
 import "../lib/config.js";
 import { requireEnv } from "../lib/chain.js";
+import { coinGeckoFetch } from "../lib/coingecko.js";
 import { createProviderApp, type ProviderCallResult } from "./providerServer.js";
 
 const PORT = Number(process.env.PROVIDER2_PORT ?? 3002);
@@ -19,7 +20,7 @@ interface CoinGeckoMarket {
 }
 
 async function fetchMarketAnalytics(): Promise<ProviderCallResult> {
-  const res = await fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=ethereum");
+  const res = await coinGeckoFetch("/coins/markets?vs_currency=usd&ids=ethereum");
   if (!res.ok) throw new Error(`CoinGecko returned ${res.status}`);
 
   const [market] = (await res.json()) as CoinGeckoMarket[];

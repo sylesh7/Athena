@@ -9,7 +9,7 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { decodeAbiParameters, parseAbi } from "viem";
+import { parseAbi } from "viem";
 import { addresses, unitsToUsdc } from "../lib/config.js";
 import { publicClient } from "../lib/chain.js";
 
@@ -165,8 +165,15 @@ export async function discoverProviders(category: string): Promise<DiscoveredPro
 
 // ── 2. Scoring — ERC-8004 reputation lookup ─────────────────────────────────
 
+// Matches the REAL deployed ERC-8004 reputation registry (impl 0x16e0…,
+// verified on Arcscan 2026-07-05), NOT contracts/src/interfaces/IERC8004.sol,
+// whose `readAllFeedback(uint256) returns (bytes)` doesn't exist on-chain and
+// reverted for every provider. `getSummary` returns a ready-made aggregate
+// (count + average) — but it REVERTS with "clientAddresses required" on an
+// empty client list, so we first fetch the real client set via getClients().
 const reputationAbi = parseAbi([
-  "function readAllFeedback(uint256 agentId) external view returns (bytes memory)",
+  "function getClients(uint256 agentId) external view returns (address[])",
+  "function getSummary(uint256 agentId, address[] clientAddresses, string tag1, string tag2) external view returns (uint64 count, int128 summaryValue, uint8 summaryValueDecimals)",
 ]);
 
 // Looks up an agent's ERC-8004 tokenId from shared/addresses.json rather than
@@ -184,69 +191,56 @@ function findAgentTokenId(address: `0x${string}`): bigint | null {
 }
 
 /**
- * Reads a provider's ERC-8004 reputation history. `readAllFeedback` returns
- * opaque ABI-encoded bytes; we decode it as an array of the `giveFeedback`
- * struct shape documented in BACKEND_A_README (agentId, score int128,
- * feedbackType uint8, tag, metadataURI, evidenceURI, comment, feedbackHash).
- * ERC-8004 is a Draft EIP — BACKEND_A_README already flags this encoding as
- * something to re-verify against the live ABI on Arcscan. If decoding fails
- * (unregistered provider, empty history, or a different on-chain encoding)
- * we fall back to a neutral "no track record yet" summary rather than
- * throwing, so a first-ever stream to a brand-new provider can still route.
+ * Reads a provider's ERC-8004 reputation via the registry's `getSummary`,
+ * an aggregate of all feedback for the agent. Two-step because `getSummary`
+ * reverts on an empty client list: first `getClients(agentId)` for the real
+ * set of feedback authors, then `getSummary(agentId, clients, "", "")`.
+ *
+ * `summaryValue` is the plain average on our 0-100 posting scale
+ * (lib/reputation.ts posts integer 0-100 scores) — verified live against
+ * readFeedback + per-client getSummary on this deployment: e.g. 5 scores of
+ * 100 + 2 of 90 => summaryValue 97, i.e. the average is NOT further scaled by
+ * the `summaryValueDecimals` field on this contract. So `avgQuality =
+ * summaryValue / 100` (clamped 0-1). `count` is the real sample size.
+ *
+ * If any read reverts (genuinely unregistered agent, or an ABI drift) we fall
+ * back to a neutral "no track record yet" summary rather than throwing, so a
+ * first-ever stream to a brand-new provider can still route.
  */
 export async function readErc8004Reputation(providerAddress: `0x${string}`): Promise<ReputationSummary> {
   const empty: ReputationSummary = { avgQuality: null, avgLatencyMs: null, sampleSize: 0 };
+  const reputation = addresses.contracts.erc8004Reputation as `0x${string}`;
 
   try {
     const tokenId = findAgentTokenId(providerAddress);
     if (tokenId === null) return empty; // not one of Athena's registered agents — no history to read
 
-    const raw = await publicClient.readContract({
-      address: addresses.contracts.erc8004Reputation as `0x${string}`,
+    const clients = await publicClient.readContract({
+      address: reputation,
       abi: reputationAbi,
-      functionName: "readAllFeedback",
+      functionName: "getClients",
       args: [tokenId],
     });
+    if (clients.length === 0) return empty; // registered, but no feedback yet (getSummary would revert)
 
-    if (!raw || raw === "0x") return empty;
+    const [count, summaryValue] = await publicClient.readContract({
+      address: reputation,
+      abi: reputationAbi,
+      functionName: "getSummary",
+      args: [tokenId, [...clients], "", ""], // "" tags => all feedback across all tags
+    });
+    if (count === 0n) return empty;
 
-    const [entries] = decodeAbiParameters(
-      [
-        {
-          type: "tuple[]",
-          components: [
-            { name: "agentId", type: "uint256" },
-            { name: "score", type: "int128" },
-            { name: "feedbackType", type: "uint8" },
-            { name: "tag", type: "string" },
-            { name: "metadataURI", type: "string" },
-            { name: "evidenceURI", type: "string" },
-            { name: "comment", type: "string" },
-            { name: "feedbackHash", type: "bytes32" },
-          ],
-        },
-      ],
-      raw
-    );
-
-    if (entries.length === 0) return empty;
-
-    // score is 0-100 "prediction accuracy" per BACKEND_A_README post-reputation.ts.
-    // We don't have separate on-chain quality/latency fields, so we treat the
-    // feedback score as a proxy for both until a richer schema is agreed —
-    // this is a real (if coarse) signal, not a placeholder.
-    const scores = entries.map((e) => Number(e.score) / 100);
-    const avgQuality = scores.reduce((a, b) => a + b, 0) / scores.length;
-
-    return { avgQuality, avgLatencyMs: null, sampleSize: entries.length };
+    const avgQuality = Math.max(0, Math.min(1, Number(summaryValue) / 100));
+    return { avgQuality, avgLatencyMs: null, sampleSize: Number(count) };
   } catch (err) {
-    // Logged, not swallowed: a real ABI-decode break and "provider genuinely
-    // has no history yet" must not look identical in the logs, even though
-    // both fall back to the same neutral score for routing purposes.
+    // Logged, not swallowed: a real read failure and "provider genuinely has
+    // no history yet" must not look identical in the logs, even though both
+    // fall back to the same neutral score for routing purposes.
     console.error(
       `readErc8004Reputation(${providerAddress}) failed — falling back to neutral score. ` +
-        `This could mean a genuinely unregistered provider, OR that ERC-8004's on-chain encoding ` +
-        `has drifted from the struct shape decoded here (it's a Draft EIP — re-verify against Arcscan):`,
+        `This could mean a genuinely unregistered provider, OR that ERC-8004's getSummary/getClients ABI ` +
+        `has drifted from the shape used here (re-verify against Arcscan):`,
       err
     );
     return empty;
@@ -291,7 +285,14 @@ export function predictOutcome(selected: ScoredProvider): Omit<RoutingDecision, 
   const hasHistory = selected.reputation.sampleSize >= 5;
   return {
     predictedQualityScore: selected.reputation.avgQuality ?? 0.85,
-    predictedLatencyMs: selected.reputation.avgLatencyMs ?? 500,
+    // ERC-8004's getSummary has no latency field, so avgLatencyMs is always
+    // null today and this default is what the bond is actually staked against.
+    // 500ms was an unvalidated guess that made EVERY organic stream slash on
+    // latency: a real x402 call's latency includes the Circle Gateway payment
+    // settlement round-trip, measured live at ~1.0-1.8s per call (never sub-
+    // 500ms). 3000ms is a fair, evidence-based ceiling with headroom — still a
+    // falsifiable bound a genuinely slow/degraded provider will breach.
+    predictedLatencyMs: selected.reputation.avgLatencyMs ?? 3000,
     confidenceScore: hasHistory ? 0.9 : 0.6,
   };
 }

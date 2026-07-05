@@ -24,7 +24,10 @@ end to end, with no compromise."
 | 🟡 Medium #6 — Smoke test never runs real E2E | ✅ **FIXED** 2026-07-05 (opt-in Tier 5 — still needs an actual funded run) |
 | 🔴 #7 (found live, not in original audit) — Gateway facilitator URL defaulted to mainnet | ✅ **FIXED** 2026-07-05 |
 | 🔴 #8 (found live, not in original audit) — ERC-8183 `createJob` reverts (`ExpiryTooShort`) | ✅ **FIXED** 2026-07-05 |
-| 🔴 #9 (found live, not in original audit) — ERC-8004 `readErc8004Reputation` calls nonexistent `tokenOfOwner`, reverts for every provider | ✅ **FIXED** 2026-07-05 |
+| 🔴 #9 (found live, not in original audit) — ERC-8004 reputation read used wrong ABI (`tokenOfOwner`, then `readAllFeedback`) — both revert | ✅ **FIXED** 2026-07-05 (now uses real `getSummary`) |
+| 🔴 #10 (found live, not in original audit) — ERC-8183 ABI mismatch: real `jobId` is `uint256` + `JobCreated` event layout differs → job never parsed | ✅ **FIXED** 2026-07-05 (real ABI pulled from verified impl on Arcscan) |
+| 🟠 #11 (found live, not in original audit) — 500ms predicted-latency default made EVERY organic stream slash on latency | ✅ **FIXED** 2026-07-05 (→3000ms, evidence-based; success/release path now reachable) |
+| 🎯 Full live E2E — both cases | ✅ **PASSED ON-CHAIN** 2026-07-05: SUCCESS→bond released (job 148739), SLASH→bond slashed (job 148741) |
 
 ---
 
@@ -348,25 +351,64 @@ deployed contract, just our reference to it).
 
 **Files touched:** `backend/lib/erc8183.ts`, `contracts/src/interfaces/IERC8183.sol`.
 
-### 9. ERC-8004 reputation read calls a function that doesn't exist on the real contract
+### 9. ERC-8004 reputation read used an ABI that doesn't match the deployed contract
 
-### ✅ FIXED (2026-07-05) — found live, same manual stream as #8
+### ✅ FIXED (2026-07-05) — found live, took two passes to reach the real cause
 
-`readErc8004Reputation()` called `tokenOfOwner(address) returns (uint256)`
-on the IdentityRegistry to resolve a provider's tokenId — this function
-does not exist on the real deployed contract. Per our own
-`IERC8004.sol`, IdentityRegistry only exposes `register`, `ownerOf(tokenId)`,
-and `tokenURI(tokenId)` — no reverse address→tokenId lookup at all. Every
-call reverted (confirmed live for all 3 providers), silently falling back to
-a neutral reputation score every single time — routing "worked" but never
-actually used real on-chain reputation.
+Two layered bugs, both from `broker.ts` guessing the ABI instead of using
+the real one:
 
-**Fix:** removed the on-chain lookup entirely. Every agent's real tokenId is
-already recorded in `shared/addresses.json` at registration time (Backend
-A's job) — `findAgentTokenId()` now just matches on address there instead.
-Simpler and it's the only version that actually works.
+1. It first called `tokenOfOwner(address)` on the IdentityRegistry to resolve
+   a provider's tokenId — that function doesn't exist on the deployed
+   contract (only `register`/`ownerOf(tokenId)`/`tokenURI(tokenId)` do), so
+   it reverted for every provider. Fixed by reading each agent's real tokenId
+   straight from `shared/addresses.json` (Backend A records it at
+   registration) via `findAgentTokenId()`.
+2. That surfaced the next layer: `readAllFeedback(uint256) returns (bytes)`
+   also doesn't exist on-chain. Pulled the **verified impl ABI from Arcscan**
+   (reputation proxy `0x8004B663…` → impl `0x16e0fa7f…`) and found the real
+   read surface: `getSummary(uint256 agentId, address[] clientAddresses,
+   string tag1, string tag2) → (uint64 count, int128 summaryValue, uint8
+   summaryValueDecimals)`. Note `getSummary` **reverts on an empty client
+   list** ("clientAddresses required"), so `readErc8004Reputation()` now does
+   two reads: `getClients(agentId)` for the real author set, then
+   `getSummary(agentId, clients, "", "")`. Verified live that `summaryValue`
+   is the plain average on our 0-100 posting scale (5×100 + 2×90 → 97, not
+   further scaled by the decimals field), so `avgQuality = summaryValue /
+   100`; `count` = real sample size.
+
+`giveFeedback` (the write side, `lib/reputation.ts`) was already correct —
+its 8-arg signature matches the real contract, which is why feedback posts
+succeeded even while reads reverted.
 
 **Files touched:** `backend/agents/broker.ts`.
+
+### 10. ERC-8183 real ABI differs from our interface — `jobId` is `uint256`, event layout wrong
+
+### ✅ FIXED (2026-07-05) — found live once `createJob` stopped reverting (#8)
+
+With #8 fixed, `createJob` landed on-chain — but decoding its receipt failed:
+`AbiEventSignatureNotFoundError` for topic `0xb0f0239b…`. Pulled the verified
+ERC-8183 impl ABI from Arcscan (proxy `0x0747…` → impl `0xa316fd02…`) and
+found `contracts/src/interfaces/IERC8183.sol` was wrong in ways that matter
+at runtime:
+
+- `jobId` is **`uint256`** everywhere (`createJob` returns uint256;
+  `setBudget`/`fund`/`submit` take uint256), **not `bytes32`**. Consistent
+  with Backend A's manual test completing decimal jobId `147246`.
+- The real `JobCreated` event is `JobCreated(uint256 indexed jobId, address
+  indexed client, address indexed provider, address evaluator, uint256
+  expiredAt, address hook)` — last field is `address hook`, not `string
+  description`.
+
+**Fix:** `lib/erc8183.ts` now declares the real ABIs, keeps `jobId` as a
+bigint internally (for setBudget/fund/submit), and converts to a zero-padded
+bytes32 only at the `AthenaCommit.commit()` boundary — its `erc8183JobId`
+param is bytes32 and it recovers the value via `uint256(...)` internally
+(proven by the 147246 manual flow). `submitDeliverable()` converts that
+bytes32 back to uint256 for the real `submit(uint256,bytes32,bytes)`.
+
+**Files touched:** `backend/lib/erc8183.ts`.
 
 ---
 

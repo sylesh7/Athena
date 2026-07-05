@@ -24,7 +24,7 @@
  */
 
 import { createRequire } from "node:module";
-import { decodeEventLog, parseAbi, type Hex } from "viem";
+import { decodeEventLog, numberToHex, parseAbi, type Hex } from "viem";
 import { addresses } from "./config.js";
 import { publicClient, walletClientFromPk } from "./chain.js";
 
@@ -91,12 +91,22 @@ function findAgentByAddress(address: string) {
   return Object.values(addresses.agents).find((a) => a.address.toLowerCase() === address.toLowerCase());
 }
 
+// ABIs below match the REAL deployed ERC-8183 (impl 0xa316…, verified on
+// Arcscan 2026-07-05), NOT contracts/src/interfaces/IERC8183.sol, which was
+// wrong in two ways that both surfaced live: (1) jobId is `uint256`
+// everywhere, not `bytes32` — the real `JobCreated` topic
+// 0xb0f0239b… decodes only against a uint256 jobId; (2) `JobCreated`'s last
+// field is `address hook`, not `string description`. We keep jobId as a
+// bigint internally and only convert to a zero-padded bytes32 at the
+// AthenaCommit boundary (its `erc8183JobId` param is bytes32, and it casts
+// `uint256(erc8183JobId)` internally — proven by Backend A's manual flow
+// completing jobId 147246).
 const erc8183Abi = parseAbi([
-  "function createJob(address provider, address evaluator, uint256 expiredAt, string description, address hook) external returns (bytes32 jobId)",
-  "function setBudget(bytes32 jobId, uint256 amount, bytes optParams) external",
-  "function fund(bytes32 jobId, bytes optParams) external",
-  "function submit(bytes32 jobId, bytes32 deliverableHash, bytes optParams) external",
-  "event JobCreated(bytes32 indexed jobId, address indexed client, address indexed provider, address evaluator, uint256 expiredAt, string description)",
+  "function createJob(address provider, address evaluator, uint256 expiredAt, string description, address hook) external returns (uint256 jobId)",
+  "function setBudget(uint256 jobId, uint256 amount, bytes optParams) external",
+  "function fund(uint256 jobId, bytes optParams) external",
+  "function submit(uint256 jobId, bytes32 deliverableHash, bytes optParams) external",
+  "event JobCreated(uint256 indexed jobId, address indexed client, address indexed provider, address evaluator, uint256 expiredAt, address hook)",
 ]);
 
 const erc20ApproveAbi = parseAbi(["function approve(address spender, uint256 amount) external returns (bool)"]);
@@ -160,12 +170,12 @@ export async function createAndFundJob(input: CreateAndFundJobInput): Promise<He
     topics: createdLog.topics,
     eventName: "JobCreated",
   });
-  const jobId = decoded.args.jobId as Hex;
+  const jobId = decoded.args.jobId as bigint; // real jobId is uint256, e.g. 147246
 
   // 2. Provider sets the budget (provider role) — signed via Circle's
   // Transaction API since this wallet has no exposed raw private key.
-  await executeAsProviderWallet(provider.circleWalletId, erc8183, "setBudget(bytes32,uint256,bytes)", [
-    jobId,
+  await executeAsProviderWallet(provider.circleWalletId, erc8183, "setBudget(uint256,uint256,bytes)", [
+    jobId.toString(),
     input.bondAmountUnits.toString(),
     "0x",
   ]);
@@ -187,7 +197,9 @@ export async function createAndFundJob(input: CreateAndFundJobInput): Promise<He
   });
   await publicClient.waitForTransactionReceipt({ hash: fundTxHash });
 
-  return jobId;
+  // AthenaCommit.commit()'s erc8183JobId param is bytes32; hand it the uint256
+  // jobId zero-padded to 32 bytes (the contract recovers it via uint256(...)).
+  return numberToHex(jobId, { size: 32 });
 }
 
 /**
@@ -205,8 +217,10 @@ export async function submitDeliverable(providerAddress: `0x${string}`, jobId: H
   if (!provider?.circleWalletId) {
     throw new Error(`No circleWalletId found for provider ${providerAddress} — cannot submit deliverable.`);
   }
-  await executeAsProviderWallet(provider.circleWalletId, erc8183, "submit(bytes32,bytes32,bytes)", [
-    jobId,
+  // jobId arrives as the bytes32 form createAndFundJob returned; the real
+  // submit() takes a uint256, so decode it back.
+  await executeAsProviderWallet(provider.circleWalletId, erc8183, "submit(uint256,bytes32,bytes)", [
+    BigInt(jobId).toString(),
     deliverableHash,
     "0x",
   ]);

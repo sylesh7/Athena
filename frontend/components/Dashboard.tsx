@@ -1,68 +1,105 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import Reveal from "./Reveal";
+import {
+  computeStats,
+  displayStatus,
+  getStreams,
+  providerName,
+  usdcStreamed,
+  type DisplayStatus,
+  type StreamStatus,
+} from "@/lib/api";
 
-type SessionStatus = "Committed" | "Streaming" | "Revealed" | "Settled" | "Slashed";
+const POLL_MS = 4000;
 
-type StreamSession = {
-  taskId: string;
-  provider: string;
-  status: SessionStatus;
-  usdcStreamed: string;
-};
-
-type StatTile = {
-  label: string;
-  value: string;
-};
-
-const DASHBOARD_STATS: StatTile[] = [
-  { label: "Total Streams", value: "42" },
-  { label: "Total USDC Streamed", value: "1,204.55" },
-  { label: "Slash Rate", value: "6.4%" },
-  { label: "Avg. Prediction Accuracy", value: "91.2%" },
-];
-
-const SESSIONS: StreamSession[] = [
-  { taskId: "0x4a7f0000000000000000000000000000000000000000000000000000009c21", provider: "Provider — Scout", status: "Committed", usdcStreamed: "0.000000" },
-  { taskId: "0x9d210000000000000000000000000000000000000000000000000000004be4", provider: "Provider — Hive", status: "Streaming", usdcStreamed: "3.240000" },
-  { taskId: "0x1b880000000000000000000000000000000000000000000000000000007a0f", provider: "Provider — Oath", status: "Streaming", usdcStreamed: "7.910000" },
-  { taskId: "0xe63c0000000000000000000000000000000000000000000000000000012aa1", provider: "Provider — Scout", status: "Revealed", usdcStreamed: "11.500000" },
-  { taskId: "0x77f00000000000000000000000000000000000000000000000000000ab340", provider: "Provider — Hive", status: "Settled", usdcStreamed: "14.980000" },
-  { taskId: "0x2c9a0000000000000000000000000000000000000000000000000000ff0112", provider: "Provider — Oath", status: "Slashed", usdcStreamed: "5.020000" },
-];
-
-const BADGE_CLASS: Record<SessionStatus, string> = {
+const BADGE_CLASS: Record<DisplayStatus, string> = {
   Committed: "badge-committed",
   Streaming: "badge-streaming",
   Revealed: "badge-revealed",
   Settled: "badge-settled",
   Slashed: "badge-slashed",
+  Failed: "badge-slashed",
 };
 
 function truncate(value: string) {
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
-function StatusBadge({ status }: { status: SessionStatus }) {
+function StatusBadge({ status }: { status: DisplayStatus }) {
   return <span className={`badge ${BADGE_CLASS[status]}`}>{status}</span>;
 }
 
-export function DashboardStats() {
-  return (
-    <Reveal className="div-grid dash-stats">
-      {DASHBOARD_STATS.map((stat) => (
-        <div className="div-cell" key={stat.label}>
-          <div className="stat-label">{stat.label}</div>
-          <div className="stat-value mono">{stat.value}</div>
-        </div>
-      ))}
-    </Reveal>
-  );
-}
+/**
+ * Live dashboard — polls the backend's GET /streams every few seconds and
+ * renders the stat tiles + session list from real in-flight/settled streams.
+ * /streams is the backend's in-memory store, so it reflects streams from the
+ * current backend session; a backend restart clears it (on-chain state is
+ * unaffected). Handles loading / empty / backend-offline gracefully.
+ */
+export default function DashboardLive() {
+  const [streams, setStreams] = useState<StreamStatus[] | null>(null);
+  const [offline, setOffline] = useState(false);
+  const lastGood = useRef<StreamStatus[] | null>(null);
 
-export function SessionList() {
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+
+    async function tick() {
+      try {
+        const data = await getStreams(controller.signal);
+        if (!active) return;
+        // newest first
+        data.sort((a, b) => b.createdAt - a.createdAt);
+        lastGood.current = data;
+        setStreams(data);
+        setOffline(false);
+      } catch (err) {
+        if (!active || controller.signal.aborted) return;
+        // keep showing the last good data instead of blanking on a transient blip
+        setOffline(true);
+        if (lastGood.current) setStreams(lastGood.current);
+      }
+    }
+
+    tick();
+    const id = setInterval(tick, POLL_MS);
+    return () => {
+      active = false;
+      controller.abort();
+      clearInterval(id);
+    };
+  }, []);
+
+  const stats = computeStats(streams ?? []);
+  const loading = streams === null && !offline;
+
+  const statTiles = [
+    { label: "Total Streams", value: loading ? "—" : String(stats.totalStreams) },
+    { label: "Total USDC Streamed", value: loading ? "—" : stats.totalUsdc.toFixed(6) },
+    { label: "Slash Rate", value: loading ? "—" : `${stats.slashRate.toFixed(1)}%` },
+    { label: "Avg. Prediction Accuracy", value: loading ? "—" : `${stats.avgAccuracy.toFixed(1)}%` },
+  ];
+
   return (
     <>
+      <Reveal className="div-grid dash-stats">
+        {statTiles.map((stat) => (
+          <div className="div-cell" key={stat.label}>
+            <div className="stat-label">{stat.label}</div>
+            <div className="stat-value mono">{stat.value}</div>
+          </div>
+        ))}
+      </Reveal>
+
+      <div className="dash-status-line">
+        <span className={offline ? "conn-dot conn-off" : "conn-dot conn-live"} />
+        {offline ? "Backend offline — showing last known data" : "Live"}
+      </div>
+
       <div className="session-head">
         <span>Task ID</span>
         <span>Provider</span>
@@ -70,29 +107,40 @@ export function SessionList() {
         <span>USDC Streamed</span>
         <span></span>
       </div>
-      <Reveal className="session-list">
-        {SESSIONS.map((session) => (
-          <Link href={`/stream/${session.taskId}`} className="session-row" key={session.taskId}>
-            <span className="mono">
-              <span className="cell-label">Task ID</span>
-              {truncate(session.taskId)}
-            </span>
-            <span>
-              <span className="cell-label">Provider</span>
-              {session.provider}
-            </span>
-            <span>
-              <span className="cell-label">Status</span>
-              <StatusBadge status={session.status} />
-            </span>
-            <span className="mono">
-              <span className="cell-label">USDC Streamed</span>
-              {session.usdcStreamed} USDC
-            </span>
-            <span className="row-view">View</span>
-          </Link>
-        ))}
-      </Reveal>
+
+      {streams && streams.length > 0 ? (
+        <div className="session-list">
+          {streams.map((s) => (
+            <Link href={`/stream/${s.taskId}`} className="session-row" key={s.taskId}>
+              <span className="mono">
+                <span className="cell-label">Task ID</span>
+                {truncate(s.taskId)}
+              </span>
+              <span>
+                <span className="cell-label">Provider</span>
+                {providerName(s)}
+              </span>
+              <span>
+                <span className="cell-label">Status</span>
+                <StatusBadge status={displayStatus(s)} />
+              </span>
+              <span className="mono">
+                <span className="cell-label">USDC Streamed</span>
+                {usdcStreamed(s).toFixed(6)} USDC
+              </span>
+              <span className="row-view">View</span>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <div className="session-empty">
+          {loading
+            ? "Loading streams…"
+            : offline
+              ? "Can't reach the backend at the configured API URL. Start it with `npm run dev` in backend/."
+              : "No streams yet. Start one from New Stream and it'll appear here live."}
+        </div>
+      )}
     </>
   );
 }

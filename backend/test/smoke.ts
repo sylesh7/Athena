@@ -334,7 +334,7 @@ async function tier2() {
 // ── Tier 3: entrypoint ───────────────────────────────────────────────────────
 
 async function tier3() {
-  const port = process.env.ENTRYPOINT_PORT ?? "3000";
+  const port = process.env.ENTRYPOINT_PORT ?? "3100";
   const base = `http://localhost:${port}`;
   let up = true;
 
@@ -447,7 +447,7 @@ async function tier5() {
     return;
   }
 
-  const port = process.env.ENTRYPOINT_PORT ?? "3000";
+  const port = process.env.ENTRYPOINT_PORT ?? "3100";
   const base = `http://localhost:${port}`;
 
   let entrypointUp = true;
@@ -541,7 +541,7 @@ async function tier6() {
     return;
   }
 
-  const port = process.env.ENTRYPOINT_PORT ?? "3000";
+  const port = process.env.ENTRYPOINT_PORT ?? "3100";
   const base = `http://localhost:${port}`;
 
   let entrypointUp = true;

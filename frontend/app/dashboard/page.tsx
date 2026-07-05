@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Cursor from "@/components/Cursor";
 import Nav from "@/components/Nav";
-import { DashboardStats, SessionList } from "@/components/Dashboard";
+import DashboardLive from "@/components/Dashboard";
 import { Footer } from "@/components/sections";
 
 export default function DashboardPage() {
@@ -20,8 +20,7 @@ export default function DashboardPage() {
               <span>New Stream</span>
             </Link>
           </div>
-          <DashboardStats />
-          <SessionList />
+          <DashboardLive />
         </section>
       </main>
       <Footer />

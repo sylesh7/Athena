@@ -15,6 +15,7 @@
     "provider2": "tsx agents/provider2.ts",
     "provider3": "tsx agents/provider3.ts",
     "entrypoint": "tsx stream/entrypoint.ts",
+    "stream": "tsx client/streamOnce.ts",
     "dev": "concurrently -n provider1,provider2,provider3,entrypoint -c blue,green,yellow,magenta \"npm:provider1\" \"npm:provider2\" \"npm:provider3\" \"npm:entrypoint\"",
     "typecheck": "tsc --noEmit",
     "test": "tsx test/smoke.ts",

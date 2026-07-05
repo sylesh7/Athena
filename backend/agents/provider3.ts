@@ -8,13 +8,14 @@
 
 import "../lib/config.js";
 import { requireEnv } from "../lib/chain.js";
+import { coinGeckoFetch } from "../lib/coingecko.js";
 import { createProviderApp, type ProviderCallResult } from "./providerServer.js";
 
 const PORT = Number(process.env.PROVIDER3_PORT ?? 3003);
 const SELLER_ADDRESS = requireEnv("PROVIDER3_WALLET_ADDRESS");
 
 async function fetchCoinGeckoPrice(): Promise<number> {
-  const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd");
+  const res = await coinGeckoFetch("/simple/price?ids=ethereum&vs_currencies=usd");
   if (!res.ok) throw new Error(`CoinGecko ${res.status}`);
   const json = (await res.json()) as { ethereum?: { usd?: number } };
   const price = json.ethereum?.usd;
