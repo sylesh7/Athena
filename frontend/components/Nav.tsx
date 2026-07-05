@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useAccount, useConnect, useDisconnect, injected } from "wagmi";
+import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { arcTestnet } from "@/lib/wagmi";
 
 function truncate(address: string) {
@@ -50,10 +50,11 @@ export default function Nav() {
   const router = useRouter();
   const isLanding = pathname === "/";
   const { address, isConnected, chainId } = useAccount();
-  const { connect, isPending: isConnecting } = useConnect();
+  const { connectAsync, connectors, isPending: isConnecting } = useConnect();
   const { disconnect } = useDisconnect();
   const [isSwitching, setIsSwitching] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -79,8 +80,38 @@ export default function Nav() {
   const wrongNetwork = isConnected && chainId !== arcTestnet.id;
 
   const handleWalletClick = async () => {
+    setConnectError(null);
     if (!isConnected) {
-      connect({ connector: injected(), chainId: arcTestnet.id });
+      // Deliberately NOT passing `chainId` here (unlike an earlier version) —
+      // bundling a chain switch into the initial connect() call means the
+      // whole connection can fail if the wallet has never seen Arc Testnet
+      // before (near-certain for an obscure custom chain), even though
+      // switchOrAddArcTestnet() below already has the correct fallback for
+      // exactly that case. Connect first with no chain requirement, then
+      // switch/add the chain as a separate, already-proven-reliable step.
+      const metaMask = connectors.find((c) => c.id === "metaMask" || c.name === "MetaMask") ?? connectors[0];
+      if (!metaMask) {
+        setConnectError("No injected wallet found — install the MetaMask extension and reload this page.");
+        return;
+      }
+      try {
+        await connectAsync({ connector: metaMask });
+      } catch (err) {
+        console.error("Wallet connect failed:", err);
+        const message = err instanceof Error ? err.message : String(err);
+        setConnectError(
+          message.toLowerCase().includes("rejected") || message.toLowerCase().includes("denied")
+            ? "Connection request rejected in MetaMask."
+            : `Couldn't connect to MetaMask: ${message}`
+        );
+        return;
+      }
+      // Now that a real account is connected, make sure it's on Arc Testnet —
+      // switchOrAddArcTestnet() handles both "switch to an already-added
+      // chain" and "wallet has never seen this chain, add it" (error 4902).
+      setIsSwitching(true);
+      await switchOrAddArcTestnet();
+      setIsSwitching(false);
     } else if (wrongNetwork) {
       setIsSwitching(true);
       await switchOrAddArcTestnet();
@@ -154,6 +185,11 @@ export default function Nav() {
           </>
         )}
       </div>
+      {connectError && (
+        <div className="nav-wallet-error" role="alert">
+          {connectError}
+        </div>
+      )}
     </nav>
   );
 }

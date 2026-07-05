@@ -36,6 +36,11 @@ img{max-width:100%;display:block}
   border-bottom:1px solid var(--line);
 }
 .nav-progress{position:absolute;top:0;left:0;height:2px;background:var(--gold);width:0;z-index:5;box-shadow:0 0 12px var(--gold-glow)}
+.nav-wallet-error{
+  position:absolute;top:100%;right:0;max-width:340px;margin:.5rem;padding:.6rem .8rem;
+  background:#2a1414;border:1px solid #7a2b2b;color:#ffb4b4;font-size:.75rem;line-height:1.4;
+  border-radius:4px;z-index:999;
+}
 .nav-brand{
   width:var(--nav-h);min-width:var(--nav-h);display:flex;align-items:center;justify-content:center;
   background:#fff;border-right:1px solid var(--line);

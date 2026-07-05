@@ -201,6 +201,31 @@ async function tier0() {
     }
     return `wallet=${balances.wallet.formatted} USDC, Gateway available=${balances.gateway.formattedAvailable} USDC`;
   });
+
+  // Found live 2026-07-05: commit() reverted with "ERC20: transfer amount
+  // exceeds balance" after enough real streams, even though every one of
+  // them had "released" its bond — because AthenaCommit uses a pull-payment
+  // pattern (see its own comment on why: Arc can revert transfers to
+  // blocklisted addresses), so a released/slashed bond only credits
+  // `withdrawable`, it never returns to the wallet automatically. Nothing
+  // called withdraw() before wallets/withdraw.ts existed.
+  await check("0", "broker's AthenaCommit withdrawable balance (pull-payment reminder)", async () => {
+    const withdrawableAbi = parseAbi(["function withdrawable(address) view returns (uint256)"]);
+    const brokerAddress = requireEnv("BROKER_WALLET_ADDRESS") as `0x${string}`;
+    const stuck = await publicClient.readContract({
+      address: addresses.contracts.athenaCommit as `0x${string}`,
+      abi: withdrawableAbi,
+      functionName: "withdrawable",
+      args: [brokerAddress],
+    });
+    const stuckUsdc = Number(stuck) / 1e6;
+    const flag =
+      stuckUsdc > 0
+        ? ` — released/slashed bonds don't auto-return to the wallet; reclaim with: ` +
+          `PK=$BROKER_PK npm run wallets:withdraw`
+        : "";
+    return `${stuckUsdc.toFixed(6)} USDC withdrawable but unclaimed${flag}`;
+  });
 }
 
 // ── Tier 0.5: Circle Developer-Controlled Wallets auth ─────────────────────

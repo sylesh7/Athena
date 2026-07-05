@@ -222,7 +222,39 @@ export async function runStream(config: StreamConfig): Promise<StreamResult> {
         break;
       }
     } catch (err) {
+      // A call that errors out entirely (network hiccup, upstream rate
+      // limit, Gateway payment failure) must still be reported to the
+      // monitor as a miss — without this, breaking the loop silently means
+      // `get_final_verdict()` only ever sees the calls that succeeded in
+      // being recorded, so a stream that failed outright after 2 misses
+      // (never reaching the 3-consecutive-misses threshold because the 3rd
+      // call never got recorded at all) would settle as predictionMet=true —
+      // a real provider/network failure reported as a met prediction.
+      // quality_score=0 guarantees this counts as a miss regardless of what
+      // was predicted; latency_ms is the real elapsed time, not a fabricated
+      // sentinel.
+      const latencyMs = Date.now() - startTime;
       console.error(`Stream ${config.taskId} call ${i} failed:`, err);
+      try {
+        await recordCallResult(config.monitorUrl, {
+          task_id: config.taskId,
+          call_number: i,
+          quality_score: 0,
+          latency_ms: latencyMs,
+          predicted_quality: config.decision.predictedQualityScore,
+          predicted_latency_ms: config.decision.predictedLatencyMs,
+        });
+      } catch (monitorErr) {
+        console.error(`Stream ${config.taskId} also failed to report call ${i}'s failure to the monitor:`, monitorErr);
+      }
+      callHistory.push({
+        callNumber: i,
+        qualityScore: 0,
+        latencyMs,
+        qualityMet: false,
+        latencyMet: false,
+      });
+      updateStream(config.taskId, { callHistory: [...callHistory] });
       break;
     }
   }

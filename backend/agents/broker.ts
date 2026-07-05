@@ -7,13 +7,45 @@
  * BACKEND_B_README.md Phase 3.3 for the rationale.
  */
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import crossSpawn from "cross-spawn";
 import { parseAbi } from "viem";
 import { addresses, unitsToUsdc } from "../lib/config.js";
 import { publicClient } from "../lib/chain.js";
 
-const execFileAsync = promisify(execFile);
+/**
+ * Runs a CLI command and captures stdout, using `cross-spawn` instead of
+ * `child_process.execFile`.
+ *
+ * `execFile("circle", args)` fails with `spawn circle ENOENT` on Windows —
+ * confirmed by reproducing it directly (`node -e "execFile('circle', ...)"`
+ * fails regardless of which shell launched Node) and via `Get-Command
+ * circle`, which resolves to `circle.ps1`/`circle.cmd` shims, not a real
+ * `.exe`. `execFile` calls Windows' `CreateProcess` directly, which cannot
+ * execute a `.cmd`/`.ps1` file — only a real shell can. The tempting fix,
+ * `shell: true`, would reopen a real shell-injection hole: `category` below
+ * is a client-supplied, zod-validated-but-unrestricted string
+ * (`entrypoint.ts`'s `streamTaskSchema` only checks it's *a* string), so a
+ * raw shell string would let a caller's `category` value execute arbitrary
+ * shell commands. `cross-spawn` resolves platform-specific shims correctly
+ * (Windows `.cmd`/`.ps1`, POSIX shebangs) while still passing `args` as a
+ * genuine array and escaping them per-argument when it does have to go
+ * through `cmd.exe` internally — verified the fix directly (same repro,
+ * `cross-spawn('circle', ['--version'])` succeeds where `execFile` failed).
+ */
+function runCli(command: string, args: string[]): Promise<{ stdout: string }> {
+  return new Promise((resolve, reject) => {
+    const child = crossSpawn(command, args);
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (chunk) => (stdout += chunk));
+    child.stderr?.on("data", (chunk) => (stderr += chunk));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolve({ stdout });
+      else reject(new Error(`${command} ${args.join(" ")} exited with code ${code}: ${stderr}`));
+    });
+  });
+}
 
 export interface DiscoveredProvider {
   address: `0x${string}`;
@@ -112,14 +144,7 @@ export async function discoverProviders(category: string): Promise<DiscoveredPro
   let marketplaceProviders: DiscoveredProvider[] = [];
 
   try {
-    const { stdout } = await execFileAsync("circle", [
-      "services",
-      "search",
-      "--category",
-      category,
-      "--output",
-      "json",
-    ]);
+    const { stdout } = await runCli("circle", ["services", "search", "--category", category, "--output", "json"]);
 
     const raw = JSON.parse(stdout);
     const items: unknown[] = raw?.data?.items ?? [];

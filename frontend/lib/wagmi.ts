@@ -12,7 +12,12 @@ export const arcTestnet = defineChain({
 
 export const wagmiConfig = createConfig({
   chains: [arcTestnet],
-  connectors: [injected()],
+  // `target: "metaMask"` — without this, `injected()` grabs whatever
+  // `window.ethereum` resolves to, which can silently be a different wallet
+  // extension (Coinbase Wallet, Brave's built-in wallet, Rabby, etc.) if more
+  // than one is installed, even though the button says "Connect Wallet" and
+  // the user expects MetaMask specifically.
+  connectors: [injected({ target: "metaMask" })],
   transports: {
     [arcTestnet.id]: http(),
   },
