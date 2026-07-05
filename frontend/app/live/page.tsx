@@ -8,61 +8,66 @@ import Nav from "@/components/Nav";
 import { Footer } from "@/components/sections";
 import { getStream, providerName, txLink, triggerStream, type StreamStatus } from "@/lib/api";
 
-type StepState = "pending" | "active" | "done";
+type StepState = "pending" | "active" | "done" | "slash";
 
 interface Step {
-  icon: string;
   title: string;
   state: StepState;
   detail?: React.ReactNode;
 }
 
+const STATE_LABEL: Record<StepState, string> = {
+  pending: "Waiting",
+  active: "In progress",
+  done: "Complete",
+  slash: "Slashed",
+};
+
 function buildSteps(s: StreamStatus | null): Step[] {
   const revealed = s?.phase === "revealed" || s?.phase === "settled";
   const settled = s?.phase === "settled";
+  const slashed = settled && s?.bondStatus === "slashed";
   const has = (v: unknown) => v !== null && v !== undefined;
 
   const commitLink = txLink(s?.commitTxHash);
   const revealLink = txLink(s?.revealTxHash);
 
   return [
-    { icon: "⚡", title: "Athena Self-Setup", state: "done", detail: "Circle Agent Wallets + ERC-8004 identities ready" },
-    { icon: "🔍", title: "Provider Discovery", state: s ? "done" : "pending", detail: s ? "Evaluated Arc providers by ERC-8004 reputation + price" : undefined },
+    { title: "Athena Self-Setup", state: "done", detail: "Circle Agent Wallets and ERC-8004 identities ready" },
+    { title: "Provider Discovery", state: s ? "done" : "pending", detail: s ? "Evaluated Arc providers by ERC-8004 reputation and price" : "Awaiting trigger" },
     {
-      icon: "🧠",
       title: "Routing Decision",
       state: revealed ? "done" : s ? "active" : "pending",
       detail: revealed ? `Selected ${providerName(s!)}` : s ? "Sealed until reveal" : undefined,
     },
     {
-      icon: "🔒",
       title: "On-Chain Commit",
       state: has(s?.commitTxHash) ? "done" : s ? "active" : "pending",
-      detail: commitLink ? <a className="sd-link mono" href={commitLink} target="_blank" rel="noreferrer">commit tx ↗</a> : "sealed hash landing on Arc",
+      detail: commitLink ? <a className="sd-link mono" href={commitLink} target="_blank" rel="noreferrer">View commit transaction</a> : "Sealed hash landing on Arc",
     },
     {
-      icon: "💰",
       title: "Bond Posted",
       state: has(s?.commitTxHash) ? "done" : "pending",
-      detail: s?.erc8183JobId ? `ERC-8183 job #${BigInt(s.erc8183JobId).toString()} · 1.00 USDC escrowed` : undefined,
+      detail: s?.erc8183JobId ? `ERC-8183 job ${BigInt(s.erc8183JobId).toString()} — 1.00 USDC escrowed` : "USDC bond into ERC-8183 escrow",
     },
     {
-      icon: "📡",
       title: "Streaming",
       state: revealed ? "done" : s?.phase === "streaming" ? "active" : "pending",
-      detail: s && s.callsCompleted > 0 ? `${s.callsCompleted} paid calls · last quality ${s.lastQualityScore?.toFixed?.(2) ?? "—"}` : undefined,
+      detail: s && s.callsCompleted > 0 ? `${s.callsCompleted} paid calls — last quality ${s.lastQualityScore?.toFixed?.(2) ?? "—"}` : "Per-call x402 nanopayments",
     },
     {
-      icon: "🔓",
       title: "Reveal",
       state: revealed ? "done" : "pending",
-      detail: revealed ? (revealLink ? <a className="sd-link mono" href={revealLink} target="_blank" rel="noreferrer">reveal tx ↗</a> : "hash unlocked") : undefined,
+      detail: revealed ? (revealLink ? <a className="sd-link mono" href={revealLink} target="_blank" rel="noreferrer">View reveal transaction</a> : "Hash unlocked") : "Prediction vs actual, unsealed",
     },
     {
-      icon: settled ? (s?.bondStatus === "slashed" ? "❌" : "✅") : "🏁",
-      title: settled ? (s?.bondStatus === "slashed" ? "Slashed" : "Settled") : "Outcome",
-      state: settled ? "done" : "pending",
-      detail: settled ? (s?.bondStatus === "slashed" ? "Prediction missed — bond slashed to client" : "Prediction held — bond released to broker") : undefined,
+      title: settled ? (slashed ? "Bond Slashed" : "Bond Released") : "Outcome",
+      state: settled ? (slashed ? "slash" : "done") : "pending",
+      detail: settled
+        ? slashed
+          ? "Prediction missed — bond slashed to client"
+          : "Prediction held — bond released to broker"
+        : "Settlement decided by the reveal",
     },
   ];
 }
@@ -153,17 +158,20 @@ function LiveInner() {
             <span>{triggering ? "Triggering…" : "Trigger Demo Stream"}</span>
           </button>
         </div>
-        {error && <div className="ns-error-box">✗ {error}</div>}
+        {error && <div className="ns-error-box">Error — {error}</div>}
 
         <div className="live-timeline">
           {steps.map((step, i) => (
             <div className={`live-step live-${step.state}`} key={i}>
-              <div className="live-step-icon">{step.icon}</div>
+              {i < steps.length - 1 && <div className="live-connector" />}
+              <div className="live-step-node">
+                <span className="live-step-num mono">{String(i + 1).padStart(2, "0")}</span>
+              </div>
               <div className="live-step-body">
+                <div className="live-step-state">{STATE_LABEL[step.state]}</div>
                 <div className="live-step-title">{step.title}</div>
                 {step.detail && <div className="live-step-detail">{step.detail}</div>}
               </div>
-              {i < steps.length - 1 && <div className="live-connector" />}
             </div>
           ))}
         </div>

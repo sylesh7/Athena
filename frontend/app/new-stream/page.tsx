@@ -102,7 +102,7 @@ export default function NewStreamPage() {
             </div>
           )}
 
-          {error && <div className="ns-error-box">✗ {error}</div>}
+          {error && <div className="ns-error-box">Error — {error}</div>}
         </section>
       </main>
       <Footer />

@@ -242,15 +242,6 @@ export function Story() {
 export function Footer() {
   return (
     <footer>
-      <div className="foot-band">
-        <div className="track">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <span key={i}>
-              STREAMING LIVE <span>*</span>{" "}
-            </span>
-          ))}
-        </div>
-      </div>
       <div className="foot-main">
         <div className="foot-logo foot-logo-text">ATHENA</div>
         <div className="foot-links">

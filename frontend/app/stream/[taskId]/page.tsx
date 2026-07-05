@@ -133,7 +133,7 @@ export default function StreamDetailPage() {
               {/* Section A — Commitment */}
               <div className="sd-section">
                 <div className="sd-section-head">
-                  <span className="sd-lock">🔒</span> Commitment — sealed before anything ran
+                  <span className="sd-index">A</span> Commitment · sealed before anything ran
                 </div>
                 <Row label="Bond posted" value={`${s.callHistory.length >= 0 ? "1.000000" : "—"} USDC`} />
                 <Row
@@ -148,7 +148,7 @@ export default function StreamDetailPage() {
               {/* Section B — Stream */}
               <div className="sd-section">
                 <div className="sd-section-head">
-                  📡 Stream — live per-call feed
+                  <span className="sd-index">B</span> Stream · live per-call feed
                   <span className="sd-runtotal">{usdcStreamed(s).toFixed(6)} USDC streamed</span>
                 </div>
                 {s.callHistory.length === 0 ? (
@@ -163,8 +163,8 @@ export default function StreamDetailPage() {
                       return (
                         <div className="call-row" key={c.callNumber}>
                           <span className="mono">{c.callNumber}</span>
-                          <span className="mono">{c.qualityScore.toFixed(2)} {c.qualityMet ? "✓" : "✗"}</span>
-                          <span className="mono">{c.latencyMs}ms {c.latencyMet ? "✓" : "✗"}</span>
+                          <span className={`mono ${c.qualityMet ? "met" : "miss"}`}>{c.qualityScore.toFixed(2)}</span>
+                          <span className={`mono ${c.latencyMet ? "met" : "miss"}`}>{c.latencyMs}ms</span>
                           <span className={pass ? "verdict-continue" : "verdict-slash"}>
                             {pass ? "continue" : "miss"}
                           </span>
@@ -177,17 +177,17 @@ export default function StreamDetailPage() {
 
               {/* Section C — Reveal & Outcome */}
               <div className="sd-section">
-                <div className="sd-section-head">🔓 Reveal &amp; Outcome</div>
+                <div className="sd-section-head"><span className="sd-index">C</span> Reveal &amp; Outcome</div>
                 {!revealed ? (
                   <div className="sd-muted sd-pad">Sealed — the routing decision unlocks once the stream reveals.</div>
                 ) : (
                   <>
                     <div className={`verify-badge verify-${verify}`}>
                       {verify === "ok"
-                        ? "✅ sha256(preimage) == on-chain commit hash — decision provably unaltered"
+                        ? "Verified · sha256(preimage) matches the on-chain commit hash — the decision was provably unaltered"
                         : verify === "fail"
-                          ? "✗ hash mismatch"
-                          : "verifying…"}
+                          ? "Mismatch · recomputed hash does not match the on-chain commit"
+                          : "Verifying…"}
                     </div>
                     <PredVsActual
                       label="Quality"
@@ -207,7 +207,7 @@ export default function StreamDetailPage() {
                     <Row label="Selected provider" value={providerName(s)} />
                     <Row
                       label="Bond outcome"
-                      value={s.bondStatus === "released" ? "Released to broker ✅" : s.bondStatus === "slashed" ? "Slashed to client ⚠️" : "—"}
+                      value={s.bondStatus === "released" ? "Released to broker" : s.bondStatus === "slashed" ? "Slashed to client" : "—"}
                     />
                     <LinkRow label="Reveal tx" hash={s.revealTxHash} />
                     {s.decisionPreimage && (
@@ -277,7 +277,7 @@ function PredVsActual({
       <span className="sd-label">{label}</span>
       <span className="sd-rowval mono">
         pred {lowerIsBetter ? "≤" : "≥"} {predicted !== undefined ? fmt(predicted) : "—"} · actual{" "}
-        {actual !== null ? fmt(actual) : "—"} {met ? "✓" : "✗"}
+        {actual !== null ? fmt(actual) : "—"} · <span className={met ? "met" : "miss"}>{met ? "MET" : "MISS"}</span>
       </span>
     </div>
   );
