@@ -27,22 +27,42 @@ Body:
   "clientAddress": "0x...",
   "category": "string, optional, defaults to \"Financial Analysis\"",
   "bondAmountUsdc": "number, optional, defaults to 1.00 USDC",
-  "maxCalls": "integer, optional, defaults to 10, hard-capped at 50"
+  "maxCalls": "integer, optional, defaults to 10, hard-capped at 50",
+  "testOverride": {
+    "predictedQualityScore": "number 0-1, optional",
+    "predictedLatencyMs": "integer >= 0, optional"
+  }
 }
 ```
+
+**`testOverride` (added 2026-07-05):** demo/test only — overrides
+`routeTask()`'s auto-derived prediction instead of faking anything; the
+commit-reveal-slash flow that follows is still fully real either way, this
+just lets you deliberately engineer which outcome it proves. Exists because
+our real providers report a steady quality/latency, so an organic run
+essentially never slashes — there was no way to demo/test the real
+on-chain slash path otherwise (see `test/smoke.ts` Tier 6, which sets
+`predictedLatencyMs: 0` to force one honestly — no real HTTP round-trip
+completes in 0ms). Could be useful for your own demo if you want a
+guaranteed-slash walkthrough alongside a guaranteed-success one.
 
 Response (immediate — the stream itself runs in the background, this does
 NOT wait for it to finish):
 ```json
 {
   "taskId": "0x...",
-  "selectedProvider": "http://localhost:3001/price/usdc-eth",
-  "predictedQualityScore": 0.85,
-  "predictedLatencyMs": 500,
-  "confidenceScore": 0.6,
   "statusUrl": "/stream-status/0x..."
 }
 ```
+
+**Updated 2026-07-05 — this response shrank.** It used to also echo
+`selectedProvider`, `predictedQualityScore`, `predictedLatencyMs`, and
+`confidenceScore` immediately here — before `commit()` even landed on-chain.
+That contradicted `README.md`'s own Live Stream View narrative ("Routing
+Decision ... shown once revealed") and `FRONTEND_README.md`'s Stream Detail
+spec (predicted-vs-actual only in the Reveal section), so it's fixed: the
+routing decision is now sealed and only appears via `/stream-status/:taskId`
+once `phase === "revealed"`. Poll status for everything past `taskId`.
 
 ### `GET /stream-status/:taskId` — poll this for live progress (H7/H8)
 
@@ -50,16 +70,37 @@ NOT wait for it to finish):
 {
   taskId: "0x...",
   phase: "committing" | "streaming" | "revealed" | "settled" | "failed",
-  selectedProviderUrl: string,
-  predictedQualityScore: number,
-  predictedLatencyMs: number,
+
+  // Sealed — undefined/null until phase === "revealed". Do not build UI that
+  // expects these before then; that's the point (see 2026-07-05 update below).
+  selectedProviderUrl?: string,
+  predictedQualityScore?: number,
+  predictedLatencyMs?: number,
+  commitHash: `0x${string}` | null,
+  decisionPreimage: string | null,       // canonical JSON — rehash it yourself
+                                          // and diff against getCommitment(taskId).commitHash
+                                          // read on-chain; that's the actual proof, not our say-so
+  preimageIntegrityWarning: boolean,     // should always be false; true means investigate
+
+  // Safe to show live — already-observed facts, not the sealed prediction.
   callsCompleted: number,
   lastQualityScore: number | null,
   lastLatencyMs: number | null,
+  callHistory: Array<{
+    callNumber: number,
+    qualityScore: number,
+    latencyMs: number,
+    qualityMet: boolean,
+    latencyMet: boolean,
+  }>,
+
   predictionMet: boolean | null,        // null until revealed
   bondStatus: "posted" | "released" | "slashed" | null,
   commitTxHash: `0x${string}` | null,
   revealTxHash: `0x${string}` | null,
+  erc8183JobId: `0x${string}` | null,   // real ERC-8183 job reference, not sensitive — null if
+                                          // ERC-8183 setup failed for this stream (non-fatal, core
+                                          // flow still settles regardless — see lib/erc8183.ts)
   error: string | null,                  // set if phase === "failed"
   createdAt: number,                     // ms epoch
   updatedAt: number,
@@ -72,6 +113,23 @@ NOT wait for it to finish):
   cctpError?: string,
 }
 ```
+
+**Updated 2026-07-05:** added `commitHash`, `decisionPreimage`,
+`callHistory` (full per-call feed — previously only `lastQualityScore`/
+`lastLatencyMs` existed), `preimageIntegrityWarning`, and `erc8183JobId`
+(ERC-8183 is now genuinely wired into the live path — createJob/setBudget/
+fund by the broker + provider, submit before reveal; previously this was
+always `0x0`/skipped entirely). Also:
+`selectedProviderUrl`/`predictedQualityScore`/`predictedLatencyMs` used to be
+populated immediately at request time — they now stay sealed until
+`phase === "revealed"`, matching the "shown once revealed" demo narrative.
+This was a real bug fix, not a style change: previously the commit-reveal
+hash was never independently verifiable by anyone outside our own process.
+Now `decisionPreimage` + `commitHash` are published at reveal specifically so
+you (or a judge) can rehash it yourselves and diff against the real on-chain
+`commitHash` via `getCommitment(taskId)` — don't just display our
+`commitHash` field as trusted, that's the whole point of exposing the
+preimage too.
 
 404 if `taskId` is unknown. Poll every ~2s during an active stream per your
 own README's guidance; the store is in-memory on our side so an unknown

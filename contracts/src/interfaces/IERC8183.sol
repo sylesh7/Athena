@@ -38,7 +38,9 @@ interface IERC8183 {
     /// @notice Client creates a job. Athena broker is the evaluator.
     /// @param provider  Agent that will perform the work
     /// @param evaluator Agent that approves/rejects (AthenaCommit contract or broker wallet)
-    /// @param expiredAt Block number after which the job can be swept as expired
+    /// @param expiredAt Unix timestamp after which the job can be swept as expired
+    ///        (confirmed against the live deployed contract 2026-07-05 — a
+    ///        block-number-scale value reverts with its `ExpiryTooShort()` error)
     /// @param description Human-readable task description
     /// @param hook      Optional callback contract address; pass address(0) to skip
     /// @return jobId   Unique job identifier

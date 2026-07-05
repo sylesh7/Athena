@@ -14,7 +14,7 @@ import express from "express";
 import { encodePacked, isAddress, keccak256 } from "viem";
 import { z } from "zod";
 import { routeTask } from "../agents/broker.js";
-import { addresses, usdcToUnits } from "../lib/config.js";
+import { addresses, usdcToUnits, GATEWAY_TESTNET_FACILITATOR_URL } from "../lib/config.js";
 import { publicClient, requireEnv, requirePkEnv } from "../lib/chain.js";
 import { runStream } from "./streamLoop.js";
 import { getStream, initStream, listStreams, updateStream } from "./state.js";
@@ -30,15 +30,41 @@ const MAX_CALLS_CAP = 50; // hard ceiling regardless of what the client requests
 const streamTaskSchema = z.object({
   taskDescription: z.string().min(10, "taskDescription must be at least 10 characters"),
   clientAddress: z.string().refine(isAddress, "clientAddress must be a valid 0x address"),
-  category: z.string().default("Financial Analysis"),
+  // Must be Circle Agent Marketplace's UPPER_SNAKE_CASE category enum (e.g.
+  // FINANCIAL_ANALYSIS) — confirmed live via `circle services search --help`.
+  // See broker.ts discoverProviders()'s comment for the full story.
+  category: z.string().default("FINANCIAL_ANALYSIS"),
   bondAmountUsdc: z.number().positive().optional(),
   maxCalls: z.number().int().positive().max(MAX_CALLS_CAP).optional(),
+  // Test/demo only — overrides routeTask()'s auto-derived prediction instead
+  // of faking anything: the commit-reveal-slash flow that follows is fully
+  // real either way, this just lets a caller deliberately engineer which
+  // outcome it proves. Exists because our real providers report a steady
+  // qualityScore/latency, so an organic run essentially never slashes —
+  // there was otherwise no way to exercise the real on-chain slash path
+  // (as opposed to just the MCP monitor's verdict logic in isolation).
+  // See test/smoke.ts Tier 6.
+  testOverride: z
+    .object({
+      predictedQualityScore: z.number().min(0).max(1).optional(),
+      predictedLatencyMs: z.number().int().min(0).optional(),
+    })
+    .optional(),
 });
 
 const app = express();
 app.use(express.json());
 
-const gateway = createGatewayMiddleware({ sellerAddress: BROKER_WALLET_ADDRESS });
+// MUST pass facilitatorUrl explicitly — createGatewayMiddleware defaults to
+// Circle's MAINNET Gateway facilitator otherwise, which has never heard of
+// Arc Testnet. See lib/config.ts's GATEWAY_TESTNET_FACILITATOR_URL comment
+// for the full story — this exact omission is why a real GatewayClient.pay()
+// against /stream-task failed with "No Gateway batching option available
+// for network eip155:5042002" the first time it was actually tried.
+const gateway = createGatewayMiddleware({
+  sellerAddress: BROKER_WALLET_ADDRESS,
+  facilitatorUrl: GATEWAY_TESTNET_FACILITATOR_URL,
+});
 
 app.post("/stream-task", gateway.require("$0.01"), async (req, res) => {
   const parsed = streamTaskSchema.safeParse(req.body);
@@ -46,10 +72,16 @@ app.post("/stream-task", gateway.require("$0.01"), async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const { taskDescription, clientAddress, category, bondAmountUsdc, maxCalls } = parsed.data;
+  const { taskDescription, clientAddress, category, bondAmountUsdc, maxCalls, testOverride } = parsed.data;
 
   try {
     const decision = await routeTask({ taskDescription, category });
+    if (testOverride?.predictedQualityScore !== undefined) {
+      decision.predictedQualityScore = testOverride.predictedQualityScore;
+    }
+    if (testOverride?.predictedLatencyMs !== undefined) {
+      decision.predictedLatencyMs = testOverride.predictedLatencyMs;
+    }
 
     // taskId scheme agreed with Backend A (H3) — byte-for-byte identical to
     // AthenaCommit.computeTaskId(client, taskDescription, blockNumber).
@@ -58,11 +90,11 @@ app.post("/stream-task", gateway.require("$0.01"), async (req, res) => {
       encodePacked(["address", "string", "uint256"], [clientAddress as `0x${string}`, taskDescription, blockNumber])
     );
 
-    initStream(taskId, {
-      selectedProviderUrl: decision.selectedProvider.url,
-      predictedQualityScore: decision.predictedQualityScore,
-      predictedLatencyMs: decision.predictedLatencyMs,
-    });
+    // The routing decision (provider, predicted values) is deliberately NOT
+    // seeded here — it stays sealed until the stream is revealed, matching
+    // README.md's Live Stream View ("Routing Decision ... shown once
+    // revealed"). See streamLoop.ts's sealCommitment/getSealedCommitment.
+    initStream(taskId);
 
     // Fire the stream in the background; caller polls /stream-status/:taskId.
     runStream({
@@ -78,12 +110,12 @@ app.post("/stream-task", gateway.require("$0.01"), async (req, res) => {
       updateStream(taskId, { phase: "failed", error: err instanceof Error ? err.message : String(err) });
     });
 
+    // Deliberately minimal response — the routing decision stays sealed until
+    // reveal. Poll statusUrl for progress; predicted values, selected
+    // provider, and the commit hash/preimage only appear once phase becomes
+    // "revealed".
     res.json({
       taskId,
-      selectedProvider: decision.selectedProvider.url,
-      predictedQualityScore: decision.predictedQualityScore,
-      predictedLatencyMs: decision.predictedLatencyMs,
-      confidenceScore: decision.confidenceScore,
       statusUrl: `/stream-status/${taskId}`,
     });
   } catch (err) {

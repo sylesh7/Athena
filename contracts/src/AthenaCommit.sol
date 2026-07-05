@@ -133,9 +133,11 @@ contract AthenaCommit is ReentrancyGuard {
     ///
     /// @param taskId        keccak256(abi.encodePacked(clientAddress, taskDescription, blockNumber))
     ///                      Backend B MUST use this exact scheme — coordinate in Phase 1 sync
-    /// @param commitHash    SHA-256(canonical decision JSON) cast to bytes32
-    ///                      JSON fields: { taskId, selectedProvider, predictedQualityScore,
-    ///                      predictedLatencyMs, confidenceScore, nonce }
+    /// @param commitHash    SHA-256(canonical decision JSON) cast to bytes32.
+    ///                      Field list is not re-enumerated here to avoid drifting out of
+    ///                      sync (it has before) — the authoritative source is
+    ///                      `decisionObj` in backend/stream/streamLoop.ts, locked by an
+    ///                      assertion in backend/test/smoke.ts.
     /// @param bondAmount    Bond in 6-decimal USDC (minimum recommended: 1_000_000 = 1 USDC)
     /// @param client        Address that paid for the stream — receives bond if prediction fails
     /// @param erc8183JobId  ERC-8183 job ID if Athena is evaluator; bytes32(0) to skip

@@ -10,7 +10,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { decodeAbiParameters, parseAbi } from "viem";
-import { addresses } from "../lib/config.js";
+import { addresses, unitsToUsdc } from "../lib/config.js";
 import { publicClient } from "../lib/chain.js";
 
 const execFileAsync = promisify(execFile);
@@ -44,50 +44,123 @@ export interface RoutingDecision {
 
 // ── 1. Discovery ──────────────────────────────────────────────────────────
 
+const ARC_TESTNET_CAIP2 = `eip155:${addresses.chainId}`; // "eip155:5042002"
+
+// Athena's own 3 registered providers — same ports/routes/prices
+// test/smoke.ts's health checks already use (agents/provider{1,2,3}.ts).
+// This is the fallback discoverProviders() returns to below, NOT a shortcut
+// around real discovery: a live `circle services search` run (2026-07-05,
+// category FINANCIAL_ANALYSIS, 50 results) confirmed the Circle Agent
+// Marketplace currently has ZERO listings anywhere with an `accepts[]`
+// entry on eip155:5042002 (Arc Testnet) — every real listing was Base/
+// Polygon/Ethereum mainnet/Avalanche/etc. So even with fully-correct
+// parsing, marketplace-only discovery cannot currently route to any
+// provider on our chain, including our own. Real discovery still runs
+// first every time; this only fills in when it comes back empty.
+function requireAgent(name: string) {
+  const agent = addresses.agents[name];
+  if (!agent) throw new Error(`shared/addresses.json has no "${name}" agent entry`);
+  return agent;
+}
+
+const KNOWN_ARC_PROVIDERS: DiscoveredProvider[] = [
+  {
+    address: requireAgent("provider1").address as `0x${string}`,
+    url: `http://localhost:${process.env.PROVIDER1_PORT ?? 3001}/price/usdc-eth`,
+    name: requireAgent("provider1").name,
+    category: "FINANCIAL_ANALYSIS",
+    pricePerCallUsdc: 0.000001,
+    endpointCount: 1,
+  },
+  {
+    address: requireAgent("provider2").address as `0x${string}`,
+    url: `http://localhost:${process.env.PROVIDER2_PORT ?? 3002}/analytics/eth`,
+    name: requireAgent("provider2").name,
+    category: "FINANCIAL_ANALYSIS",
+    pricePerCallUsdc: 0.000001,
+    endpointCount: 1,
+  },
+  {
+    address: requireAgent("provider3").address as `0x${string}`,
+    url: `http://localhost:${process.env.PROVIDER3_PORT ?? 3003}/price/feed`,
+    name: requireAgent("provider3").name,
+    category: "FINANCIAL_ANALYSIS",
+    pricePerCallUsdc: 0.000001,
+    endpointCount: 1,
+  },
+];
+
 /**
  * Lists x402 provider agents from Circle's Agent Marketplace via the Circle
- * CLI. Requires `circle` CLI installed and authenticated (see BACKEND_B_README
- * Phase 0). The CLI's `--output json` schema is not formally documented for
- * pre-1.0 `circle services list` — this parses the commonly-observed shape
- * defensively (tolerates a couple of plausible field-name variants) rather
- * than assuming one exact schema. Verify against a live `circle services list
- * --output json` run before demoing.
+ * CLI's `services search` verb (confirmed live 2026-07-05 — the previously
+ * assumed `services list` verb doesn't exist: "Unknown verb 'list' for
+ * resource 'services'"; real verbs are search/inspect/pay, there's no
+ * --chain flag, and --category must be UPPER_SNAKE_CASE, e.g.
+ * FINANCIAL_ANALYSIS). Real response shape, confirmed from a live run:
+ * `{ data: { items: [{ resource, accepts: [{ network, payTo, amount, ... }],
+ * metadata: { provider: { name, category, ... } } }] } }` — nothing like the
+ * flat array previously assumed. Filters `accepts[]` down to whichever entry
+ * (if any) pays out on Arc Testnet, since that's the only chain this system
+ * can actually route/pay on; a listing with no Arc-Testnet `accepts` entry
+ * is not something we can use no matter how well-reputed it is.
+ *
+ * Falls back to KNOWN_ARC_PROVIDERS if the marketplace search errors out or
+ * returns zero Arc-Testnet-compatible results — see that constant's comment
+ * for why this isn't just theoretical.
  */
 export async function discoverProviders(category: string): Promise<DiscoveredProvider[]> {
-  const { stdout } = await execFileAsync("circle", [
-    "services",
-    "list",
-    "--chain",
-    "ARC-TESTNET",
-    "--category",
-    category,
-    "--output",
-    "json",
-  ]);
+  let marketplaceProviders: DiscoveredProvider[] = [];
 
-  const raw = JSON.parse(stdout);
-  const list: unknown[] = Array.isArray(raw) ? raw : (raw.services ?? raw.data ?? []);
+  try {
+    const { stdout } = await execFileAsync("circle", [
+      "services",
+      "search",
+      "--category",
+      category,
+      "--output",
+      "json",
+    ]);
 
-  return list.map((entry): DiscoveredProvider => {
-    const e = entry as Record<string, unknown>;
-    const address = (e.sellerAddress ?? e.address ?? e.wallet) as string;
-    const url = (e.endpoint ?? e.url) as string;
-    const priceRaw = (e.price ?? e.pricePerCall ?? "0") as string | number;
-    const pricePerCallUsdc = typeof priceRaw === "number" ? priceRaw : parseFloat(String(priceRaw).replace(/[^0-9.]/g, ""));
+    const raw = JSON.parse(stdout);
+    const items: unknown[] = raw?.data?.items ?? [];
 
-    if (!address || !url) {
-      throw new Error(`Unexpected \`circle services list\` entry shape: ${JSON.stringify(entry)}`);
-    }
+    marketplaceProviders = items
+      .map((entry): DiscoveredProvider | null => {
+        const e = entry as Record<string, unknown>;
+        const accepts = (e.accepts ?? []) as Array<Record<string, unknown>>;
+        const arcAccept = accepts.find((a) => a.network === ARC_TESTNET_CAIP2);
+        if (!arcAccept) return null; // real listing, but can't pay it on our chain
 
-    return {
-      address: address as `0x${string}`,
-      url,
-      name: String(e.name ?? url),
-      category: String(e.category ?? category),
-      pricePerCallUsdc: Number.isFinite(pricePerCallUsdc) ? pricePerCallUsdc : 0,
-      endpointCount: Number(e.endpointCount ?? 1),
-    };
-  });
+        const metadata = (e.metadata ?? {}) as Record<string, unknown>;
+        const provider = (metadata.provider ?? {}) as Record<string, unknown>;
+
+        return {
+          address: arcAccept.payTo as `0x${string}`,
+          url: String(e.resource ?? ""),
+          name: String(provider.name ?? e.resource ?? "unknown"),
+          category: String(provider.category ?? category),
+          pricePerCallUsdc: unitsToUsdc(BigInt((arcAccept.amount as string) ?? "0")),
+          endpointCount: 1,
+        };
+      })
+      .filter((p): p is DiscoveredProvider => p !== null);
+  } catch (err) {
+    console.error(
+      `circle services search failed — falling back to Athena's own registered providers only:`,
+      err
+    );
+  }
+
+  if (marketplaceProviders.length === 0) {
+    console.warn(
+      `circle services search returned zero providers with an Arc Testnet (${ARC_TESTNET_CAIP2}) payment ` +
+        `option for category "${category}". Falling back to Athena's own 3 registered providers ` +
+        `(KNOWN_ARC_PROVIDERS) so routing can still happen.`
+    );
+    return KNOWN_ARC_PROVIDERS;
+  }
+
+  return marketplaceProviders;
 }
 
 // ── 2. Scoring — ERC-8004 reputation lookup ─────────────────────────────────
@@ -96,9 +169,19 @@ const reputationAbi = parseAbi([
   "function readAllFeedback(uint256 agentId) external view returns (bytes memory)",
 ]);
 
-const identityAbi = parseAbi([
-  "function tokenOfOwner(address owner) external view returns (uint256)",
-]);
+// Looks up an agent's ERC-8004 tokenId from shared/addresses.json rather than
+// an on-chain address->tokenId call. There is no such call: the real
+// IdentityRegistry (contracts/src/interfaces/IERC8004.sol) only exposes
+// `register`, `ownerOf(tokenId)`, `tokenURI(tokenId)` — no reverse lookup.
+// A prior version of this file called an invented `tokenOfOwner(address)`
+// function that doesn't exist on the deployed contract, which reverted for
+// every provider (confirmed live 2026-07-05). Backend A already records each
+// agent's real tokenId at registration time, so this is both simpler and
+// the only thing that actually works.
+function findAgentTokenId(address: `0x${string}`): bigint | null {
+  const agent = Object.values(addresses.agents).find((a) => a.address.toLowerCase() === address.toLowerCase());
+  return agent ? BigInt(agent.tokenId) : null;
+}
 
 /**
  * Reads a provider's ERC-8004 reputation history. `readAllFeedback` returns
@@ -115,12 +198,8 @@ export async function readErc8004Reputation(providerAddress: `0x${string}`): Pro
   const empty: ReputationSummary = { avgQuality: null, avgLatencyMs: null, sampleSize: 0 };
 
   try {
-    const tokenId = await publicClient.readContract({
-      address: addresses.contracts.erc8004Identity as `0x${string}`,
-      abi: identityAbi,
-      functionName: "tokenOfOwner",
-      args: [providerAddress],
-    });
+    const tokenId = findAgentTokenId(providerAddress);
+    if (tokenId === null) return empty; // not one of Athena's registered agents — no history to read
 
     const raw = await publicClient.readContract({
       address: addresses.contracts.erc8004Reputation as `0x${string}`,
@@ -160,7 +239,16 @@ export async function readErc8004Reputation(providerAddress: `0x${string}`): Pro
     const avgQuality = scores.reduce((a, b) => a + b, 0) / scores.length;
 
     return { avgQuality, avgLatencyMs: null, sampleSize: entries.length };
-  } catch {
+  } catch (err) {
+    // Logged, not swallowed: a real ABI-decode break and "provider genuinely
+    // has no history yet" must not look identical in the logs, even though
+    // both fall back to the same neutral score for routing purposes.
+    console.error(
+      `readErc8004Reputation(${providerAddress}) failed — falling back to neutral score. ` +
+        `This could mean a genuinely unregistered provider, OR that ERC-8004's on-chain encoding ` +
+        `has drifted from the struct shape decoded here (it's a Draft EIP — re-verify against Arcscan):`,
+      err
+    );
     return empty;
   }
 }

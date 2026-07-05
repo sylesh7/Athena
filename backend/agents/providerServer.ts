@@ -8,6 +8,7 @@
 
 import { createGatewayMiddleware } from "@circle-fin/x402-batching/server";
 import express, { type Request } from "express";
+import { GATEWAY_TESTNET_FACILITATOR_URL } from "../lib/config.js";
 
 export interface ProviderCallResult {
   data: Record<string, unknown>;
@@ -28,9 +29,14 @@ export function createProviderApp(opts: {
 
   const gateway = createGatewayMiddleware({
     sellerAddress: opts.sellerAddress,
-    // facilitatorUrl defaults to Circle's hosted Arc testnet facilitator
-    // (https://gateway-api-testnet.circle.com); network eip155:5042002 is
-    // inferred from ARC-TESTNET.
+    // MUST be explicit — createGatewayMiddleware defaults facilitatorUrl to
+    // Circle's MAINNET Gateway facilitator if omitted, which has never heard
+    // of Arc Testnet (confirmed from the package's own .d.ts). Omitting this
+    // silently breaks every real paid request with "No Gateway batching
+    // option available for network eip155:5042002" while a bare unpaid
+    // request still correctly 402s — that's why this went unnoticed until a
+    // real GatewayClient.pay() round-trip was attempted for the first time.
+    facilitatorUrl: GATEWAY_TESTNET_FACILITATOR_URL,
   });
 
   app.get(

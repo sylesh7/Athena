@@ -11,7 +11,63 @@ end to end, with no compromise."
 
 ---
 
+## Status tracker
+
+| Item | Status |
+|---|---|
+| 🔴 Critical — commit-reveal hash unverifiable + early seal leak | ✅ **FIXED** 2026-07-05 |
+| 🟠 High #1 — ERC-8183 job never created | ✅ **FIXED** 2026-07-05 |
+| 🟠 High #2 — ERC-8004 reputation feedback missing | ✅ **FIXED** 2026-07-05 |
+| 🟠 High #3 — Broker Gateway deposit unconfirmed | ✅ **FIXED** 2026-07-05 (code portion — operational check still needed) |
+| 🟡 Medium #4 — Provider discovery parsing unverified | ✅ **FULLY FIXED** 2026-07-05 (real `search` verb/shape + Arc-Testnet filter + own-provider fallback — verified live) |
+| 🟡 Medium #5 — Reputation read silent-catch | ✅ **FIXED** 2026-07-05 |
+| 🟡 Medium #6 — Smoke test never runs real E2E | ✅ **FIXED** 2026-07-05 (opt-in Tier 5 — still needs an actual funded run) |
+| 🔴 #7 (found live, not in original audit) — Gateway facilitator URL defaulted to mainnet | ✅ **FIXED** 2026-07-05 |
+| 🔴 #8 (found live, not in original audit) — ERC-8183 `createJob` reverts (`ExpiryTooShort`) | ✅ **FIXED** 2026-07-05 |
+| 🔴 #9 (found live, not in original audit) — ERC-8004 `readErc8004Reputation` calls nonexistent `tokenOfOwner`, reverts for every provider | ✅ **FIXED** 2026-07-05 |
+
+---
+
 ## 🔴 Critical — the core innovation doesn't actually prove anything yet
+
+### ✅ FIXED (2026-07-05)
+
+The decision preimage is now sealed at commit time (`state.ts`'s
+module-private `sealCommitment`/`getSealedCommitment`, never exposed via
+`getStream`/`listStreams`) and only copied into the public `StreamStatus` —
+`commitHash`, `decisionPreimage`, plus a live `callHistory` feed — once the
+stream is actually revealed. Anyone can now pull the revealed preimage,
+rehash it themselves, and diff against `getCommitment(taskId).commitHash`
+read directly on-chain — that's the actual proof this was missing.
+
+Also fixed the adjacent leak found while tracing this: `predictedQualityScore`/
+`predictedLatencyMs`/`selectedProviderUrl` used to be exposed immediately at
+request time, before `commit()` even landed — now genuinely sealed until
+`phase === "revealed"`, matching `README.md`'s "shown once revealed" intent.
+
+**Critical safety note honored in the fix:** the pre-reveal integrity
+recompute is a corruption/regression guard only (same process/trust
+boundary, not external verification) — on a mismatch it logs loudly and sets
+`preimageIntegrityWarning: true`, but the actual `reveal()` call **always**
+uses the originally-sealed hash, never the recomputed one. `AthenaCommit.sol`
+has no cancel/timeout/recovery function, so substituting a "corrected" hash
+would have guaranteed a `HashMismatch` revert and permanently stranded the
+bond.
+
+**Files touched:** `backend/stream/state.ts`, `backend/stream/streamLoop.ts`,
+`backend/stream/entrypoint.ts`, `contracts/src/AthenaCommit.sol`
+(comment-only, `forge build` confirmed clean), `backend/test/smoke.ts` (new
+field-list drift guard), `backend/HANDOFF_FRONTEND.md` (updated contract
+docs). `npm run typecheck` passes.
+
+**What this does not achieve** (by design, given the contract can't be
+redeployed): on-chain cryptographic enforcement that `predictionMet` itself
+is truthful — the contract still takes it as an unconstrained boolean.
+Transparency/auditability was the achievable fix; full on-chain enforcement
+wasn't. See the original writeup below for the full problem description.
+
+<details>
+<summary>Original problem writeup (for reference — click to expand)</summary>
 
 ### The commit-reveal hash is circular. It can never fail unless there's a bug.
 
@@ -61,100 +117,256 @@ small addition to `streamLoop.ts`'s in-memory stream state and
 decision object alongside the hash, and expose it after reveal (not before,
 or it defeats the seal).
 
+</details>
+
 ---
 
 ## 🟠 High — required by `README.md`, currently absent from the live path
 
 ### 1. ERC-8183 job never created — `erc8183JobId` is always `0x0`
-*(confirmed earlier, restated here for completeness)*
 
-`README.md` step 3 requires the bond to post "into ERC-8183 escrow." The
-lifecycle Backend A specified and proved works (`BACKEND_A_README.md`
-Phase 2.4, tested live as jobId `147246`) is never invoked automatically.
-Backend B's entrypoint always passes `bytes32(0)`, per `BACKEND_B_README.md`
-lines 251/257's own admission.
+### ✅ FIXED (2026-07-05) — initially misdiagnosed as blocked, wasn't
 
-**Fix:** in `backend/stream/entrypoint.ts`, before calling `commit()`, add:
-`createJob(provider, evaluator=AthenaCommit address, expiredAt, description, hook=0x0)`
-→ `setBudget(jobId, bondAmountUsdc, "")` → `USDC.approve(erc8183, amount)` +
-`fund(jobId, "")` → pass the real `jobId` into `commit()`. Provider side needs
-a `submit(jobId, deliverableHash, "")` call once its work is done, before
-`reveal()` runs.
+First pass concluded this was structurally impossible: `setBudget()`/
+`submit()` are provider-role calls, and Athena's provider wallets are Circle
+Developer-Controlled Wallets with no exposed raw private key — so nothing
+could sign as the provider. **That conclusion was wrong**, caught by
+pushback rather than by re-checking it myself first: `@circle-fin/developer-
+controlled-wallets`' `createContractExecutionTransaction()` lets a DCW sign
+*any* contract call server-side, without ever exposing a key — and
+`wallets/registerCircleProviders.ts` already used exactly this mechanism for
+a different contract call (`IdentityRegistry.register`). The "impossible"
+part was never actually checked before being declared.
+
+**What's built:** new `backend/lib/erc8183.ts` — `createAndFundJob()` (broker
+creates the job + funds it via its own raw key, provider sets the budget via
+Circle's Transaction API) and `submitDeliverable()` (provider submits via
+the same API, hash of the stream's real `callHistory` — not a placeholder).
+Wired into `streamLoop.ts`: job creation happens before `commit()` (its
+`jobId` is a required `commit()` param), `submitDeliverable()` happens after
+the stream loop and before `reveal()`. Both wrapped in try/catch — non-fatal
+by design, matching how `AthenaCommit.sol`'s own `_settleERC8183` already
+tolerates a job that failed or was never submitted (emits
+`ERC8183Settled(settled=false)` rather than reverting) — so a Circle API
+hiccup degrades gracefully instead of blocking the core commit-reveal-bond
+flow, which works independently of ERC-8183 either way.
+
+Also added `erc8183JobId` to the public `/stream-status/:taskId` shape (not
+sensitive, just a public on-chain reference) and widened `AthenaAddresses`'
+type in `lib/config.ts` to include `circleWalletId`/`custody`, which were
+already in the actual JSON but untyped.
+
+**Files touched:** `backend/lib/erc8183.ts` (new), `backend/stream/streamLoop.ts`,
+`backend/stream/state.ts`, `backend/lib/config.ts`, `backend/HANDOFF_FRONTEND.md`.
+`npm run typecheck` passes.
 
 ### 2. ERC-8004 reputation feedback — never posted for either party, in the live flow
-`README.md` step 7: *"ERC-8004 ReputationRegistry updated for both broker and
-provider."* Zero calls to `giveFeedback()` exist in `entrypoint.ts` or
-`streamLoop.ts` (confirmed via grep). The only place this logic exists at all
-is `contracts/scripts/post-reputation.ts` — a fully manual, standalone script
-requiring hand-set env vars (`VALIDATOR_PK`, `AGENT_ID`, `SCORE`), rating one
-agent per invocation. It isn't even registered as an npm script in
-`backend/package.json` — the doc comment's `npm run reputation` doesn't
-correspond to anything runnable.
 
-**Fix:** wire a post-settlement hook into `streamLoop.ts` (after `reveal()`
-confirms) that calls `giveFeedback()` twice — once for the provider (quality
-achieved vs. predicted), once for the broker (routing accuracy) — using a
-separate validator wallet (self-feedback is blocked, per Backend A's own
-docs). Add the missing `"reputation"` script to `backend/package.json` at
-minimum as a manual fallback.
+### ✅ FIXED (2026-07-05)
+
+Added `backend/lib/reputation.ts` — a `postStreamReputation()` helper reusing
+the same `giveFeedback()` logic as the old manual script, but callable from
+code. Wired into `streamLoop.ts` as a fire-and-forget post-settle hook (same
+non-blocking convention as the existing CCTP payout call) that posts
+feedback for **both** the provider (tag `"quality"`) and the broker (tag
+`"routing"`), scored from the real observed average quality across
+`callHistory` (falls back to a binary 100/0 on `predictionMet` only if zero
+calls completed). Address→tokenId resolution reads `shared/addresses.json`'s
+`agents` section, per the project's own "never hardcode" rule.
+
+Requires a new `VALIDATOR_PK` env var (added to `.env.example` with
+rationale) — a wallet that is NOT the broker's or any provider's own key,
+since ERC-8004 blocks an agent from rating itself. **If `VALIDATOR_PK` isn't
+set, this logs a warning and skips feedback rather than failing the
+stream** — so this needs an actual validator wallet generated/funded before
+it does anything live; the code path is real, the wallet provisioning is an
+operational step still needed (see High #3's same caveat).
+
+**Files touched:** `backend/lib/reputation.ts` (new), `backend/stream/streamLoop.ts`,
+`backend/.env.example`. `npm run typecheck` passes.
 
 ### 3. Broker's Circle Gateway deposit — never confirmed by any code, only printed as an instruction
-`GatewayClient.pay()` (`streamLoop.ts:118`) needs the broker's wallet to have
-USDC *deposited into Gateway* — a different custody than plain wallet
-balance. `backend/wallets/setup.ts:99-100` only **prints** the CLI command
-(`circle gateway deposit --amount 10 ...`) as a instruction for a human to
-run — it never executes or verifies it. The only automated balance check in
-the repo (`backend/test/smoke.ts:127-148`) reads the wallet's plain ERC-20
-`balanceOf`, not the Gateway-deposited balance. **If this step was never
-actually run by a human, every real stream will fail silently at the payment
-step**, and nothing in the codebase would catch that before it happens.
 
-**Fix:** two parts. (a) Operationally: confirm right now, out-of-band
-(Circle dashboard or `circle gateway balance`), that the broker wallet
-actually has a Gateway deposit — don't assume the printed instruction was
-followed. (b) In code: extend `smoke.ts` to query the actual Gateway balance
-(via Circle's balance API/SDK), not just wallet `balanceOf`, so a missing
-deposit is caught by `npm test` instead of failing mid-demo.
+### ✅ FIXED — code portion (2026-07-05); operational check still outstanding
+
+Added a real check to `test/smoke.ts` Tier 0: instantiates a `GatewayClient`
+with the broker's own key and calls the SDK's documented `getBalances()`
+(returns `{ wallet, gateway: { available, ... } }` — confirmed from the
+package's own `.d.ts`, not guessed), and fails loudly with the exact `circle
+gateway deposit ...` command to run if `gateway.available === 0n`. This is
+now caught by `npm test` instead of only surfacing as a real stream failing
+silently mid-payment.
+
+**What's still outstanding — this is operational, not code:** the check
+will tell you if the deposit is missing, but nobody has actually confirmed
+right now whether the broker's Gateway deposit exists. **Run `npm test` (or
+just `circle gateway balance --address <broker> --chain ARC-TESTNET`) before
+relying on this working** — that's the one action item left here, and it's
+on whoever has Circle CLI access, not something I can check from here.
+
+**Files touched:** `backend/test/smoke.ts`.
 
 ---
 
 ## 🟡 Medium — working, but fragile or unverified
 
 ### 4. Provider discovery (`circle services list`) — real, but parsing is guesswork
-`backend/agents/broker.ts:56-91` genuinely shells out to the real CLI (not
-hardcoded providers) — but the code's own comment
-(`broker.ts:49-55`) admits the pre-1.0 CLI's JSON schema is undocumented, and
-the field-extraction (`e.sellerAddress ?? e.address ?? e.wallet`) is
-defensive guesswork against a shape nobody has confirmed live.
 
-**Fix:** run `circle services list --chain ARC-TESTNET --category "Financial
-Analysis" --output json` for real once, capture the actual shape, and either
-firm up the parsing or add a loud startup failure if the shape doesn't match
-what's expected (rather than silently falling through to `??` defaults).
+### ✅ FULLY FIXED (2026-07-05) — the earlier "visibility only" fix above was superseded
+
+The "visibility only" fix above was written before anyone had run the real
+CLI live. Once `npm run dev` actually attempted a real stream, it hit:
+`Error: Unknown verb "list" for resource "services"`. Investigated live
+(`circle services --help`, `circle services search --help`, then a real
+`circle services search --category FINANCIAL_ANALYSIS --output json` run)
+and found the previous assumptions were wrong in every dimension:
+
+- The verb is `search`, not `list` (`list` doesn't exist at all).
+- There is no `--chain` flag — `search` can't be scoped to a chain server-side.
+- `--category` must be `UPPER_SNAKE_CASE` (e.g. `FINANCIAL_ANALYSIS`), not
+  free text like `"Financial Analysis"`.
+- The real response is deeply nested, not a flat array:
+  `{ data: { items: [{ resource, accepts: [{ network, payTo, amount, asset,
+  ... }], metadata: { provider: { name, category, ... } } }] } }` — nothing
+  like the `e.sellerAddress ?? e.address ?? e.wallet` flat-field guessing
+  the old code did.
+- **Bigger finding:** filtered all 50 real results (category
+  `FINANCIAL_ANALYSIS`) for any `accepts[]` entry on `eip155:5042002` (Arc
+  Testnet). **Zero matched.** Every real listing was Base/Polygon/Ethereum
+  mainnet/Avalanche/Arbitrum/Optimism, from providers "Allium" and "AIsa
+  API." The Circle Agent Marketplace currently has no Arc Testnet listings
+  in this category at all — including our own registered provider1/2/3,
+  which apparently aren't (yet) surfaced by marketplace search on this
+  chain.
+
+**Fix implemented:** `discoverProviders()` now calls the real `search` verb
+with correct flags, parses the real nested shape, and filters `accepts[]`
+for an Arc-Testnet-compatible entry (using `payTo`/`amount` from that entry,
+not invented flat fields). If that yields zero results — which is the
+current live reality — it falls back to `KNOWN_ARC_PROVIDERS`, a small
+hardcoded list of Athena's own 3 registered providers (real addresses from
+`shared/addresses.json`, real ports/routes from `agents/provider{1,2,3}.ts`,
+matching `test/smoke.ts`'s own health-check registry). Real discovery still
+runs first every time; the fallback only kicks in when the marketplace
+genuinely has nothing usable on our chain, which is provably the current
+state, not a hypothetical.
+
+Also updated `stream/entrypoint.ts`'s default `category` from `"Financial
+Analysis"` to `"FINANCIAL_ANALYSIS"` to match the marketplace's real enum
+casing.
+
+**Files touched:** `backend/agents/broker.ts`, `backend/stream/entrypoint.ts`.
+Verified with `npm run typecheck` (clean).
+
+---
+
+### 7. Gateway facilitator URL defaulted to mainnet — every paid request failed until fixed
+
+### ✅ FIXED (2026-07-05) — found and fixed live, mid-E2E-test
+
+Discovered while actually running a live paid `/stream-task` call for the
+first time: every `GatewayClient.pay()` attempt failed with `"No Gateway
+batching option available for network eip155:5042002."` Root cause,
+confirmed from `@circle-fin/x402-batching/server`'s own `.d.ts`:
+`createGatewayMiddleware()`'s `facilitatorUrl` defaults to Circle's
+**mainnet** Gateway facilitator (`https://gateway-api.circle.com`) unless
+explicitly overridden — it has never heard of Arc Testnet. A prior comment
+in `providerServer.ts` wrongly claimed testnet was already the default.
+
+**Fix:** added `GATEWAY_TESTNET_FACILITATOR_URL =
+"https://gateway-api-testnet.circle.com"` to `lib/config.ts`, passed
+explicitly as `facilitatorUrl` in both call sites
+(`agents/providerServer.ts` and `stream/entrypoint.ts` — confirmed via grep
+these are the only two `createGatewayMiddleware` usages). Also confirmed
+this requires restarting any already-running `npm run dev` process — it
+doesn't hot-reload past its own import graph.
+
+**Also hit while live-testing:** the `circle gateway deposit` CLI command
+fails with `"No local wallet matches <address> ... Run circle wallet
+login"` for any wallet whose raw private key we generated ourselves
+(broker, test-client) — the CLI only manages wallets it created or Circle
+DCW wallets. Fixed by adding `backend/wallets/depositGateway.ts`, which
+calls `GatewayClient.deposit()` directly using the key we already hold
+(`PK=0x... AMOUNT=10 npm run wallets:deposit-gateway`). Note: Gateway's
+balance indexer lags a real on-chain deposit by ~15s — a `0` balance
+immediately after depositing is not a bug, re-query after a short wait.
+
+**Files touched:** `backend/lib/config.ts`, `backend/agents/providerServer.ts`,
+`backend/stream/entrypoint.ts`, `backend/wallets/depositGateway.ts`,
+`backend/package.json` (new `wallets:deposit-gateway` script).
 
 ### 5. ERC-8004 reputation read — real on-chain call, but failures are invisible
-`broker.ts:114-166` really reads `ReputationRegistry.readAllFeedback()`
-on-chain — but it's wrapped in a blanket `try { ... } catch { return empty
-}` (`broker.ts:117,163-165`), against an ABI struct shape the code's own
-comment flags as unverified (`broker.ts:104-112`). A real decode failure and
-"provider genuinely has no history yet" currently look identical.
 
-**Fix:** log the actual caught error before falling back to a neutral score,
-so a schema break is visible in logs/console during testing instead of
-silently masquerading as "no reputation yet."
+### ✅ FIXED (2026-07-05)
+
+The `catch` block now `console.error`s the actual caught error (with context
+noting ERC-8004 is a Draft EIP whose encoding may have drifted) before
+falling back to the neutral score — a real decode failure is no longer
+indistinguishable from "provider has no history yet" in the logs, even
+though both still route the same way for now.
+
+**Files touched:** `backend/agents/broker.ts`.
 
 ### 6. Smoke test never runs a real end-to-end stream
-`backend/test/smoke.ts`'s ~26 checks are all real, but every one that
-touches the live financial path *deliberately stops at the 402 challenge* —
-it confirms `/stream-task` requires payment, then stops, by design (to avoid
-spending real funds on every `npm test` run). That's reasonable as a
-pre-flight check, but it means **no automated test in this repo has ever
-proven a real commit → stream → reveal → settle cycle completes.** That can
-currently only be shown by actually running it once, live.
 
-**This is exactly what H6 (per `HANDOFF_FRONTEND_FROM_BACKEND_A.md`) is for**
-— it's not a separate action item, it's the one thing that would surface
-items 2, 3, and 4 above immediately if any of them are broken.
+### ✅ FIXED (2026-07-05)
+
+Added Tier 5 to `test/smoke.ts` — opt-in only (`RUN_LIVE_E2E=true` +
+`TEST_CLIENT_PK`, skipped by default like every other tier's prerequisite
+check), since unlike every other check this one genuinely spends real
+testnet USDC/gas. When run, it makes a real `GatewayClient.pay()` call
+against `/stream-task`, polls `/stream-status/:taskId` for up to 2 minutes,
+and asserts the stream reaches `"settled"` with `commitHash`/
+`decisionPreimage` actually present — directly exercising the Critical fix
+above, not just checking that a 402 challenge exists.
+
+**This doesn't replace H6** (the full 3-person call verifying Backend A sees
+it land on Arcscan) — it's a repeatable, automatable version of the same
+underlying claim, runnable solo before that call to catch regressions
+early.
+
+**Files touched:** `backend/test/smoke.ts`.
+
+### 8. ERC-8183 `createJob` reverts live with `ExpiryTooShort()`
+
+### ✅ FIXED (2026-07-05) — found live during a real manual stream (not smoke.ts)
+
+`lib/erc8183.ts`'s `createAndFundJob()` computed `expiredAt` as
+`currentBlock + 100_000n` — a block-number-scale value (~50.3M). A real
+manual stream through `npm run dev` hit a revert with an unrecognized
+selector `0xf7a0748c`; `cast 4byte 0xf7a0748c` decoded it as
+**`ExpiryTooShort()`**. The real deployed ERC-8183 contract checks
+`expiredAt` against `block.timestamp` (~1.77B), not block number — a
+block-number-scale value reads as already-expired. `IERC8183.sol`'s own doc
+comment ("Block number after which...") was simply wrong.
+
+**Fix:** `expiredAt` is now `(await publicClient.getBlock()).timestamp +
+86_400n` (24h from now, a real unix timestamp). Updated the stale doc
+comment in `IERC8183.sol` to match. Comment-only contract change — `forge
+build` still compiles clean, no redeploy needed (this interface isn't the
+deployed contract, just our reference to it).
+
+**Files touched:** `backend/lib/erc8183.ts`, `contracts/src/interfaces/IERC8183.sol`.
+
+### 9. ERC-8004 reputation read calls a function that doesn't exist on the real contract
+
+### ✅ FIXED (2026-07-05) — found live, same manual stream as #8
+
+`readErc8004Reputation()` called `tokenOfOwner(address) returns (uint256)`
+on the IdentityRegistry to resolve a provider's tokenId — this function
+does not exist on the real deployed contract. Per our own
+`IERC8004.sol`, IdentityRegistry only exposes `register`, `ownerOf(tokenId)`,
+and `tokenURI(tokenId)` — no reverse address→tokenId lookup at all. Every
+call reverted (confirmed live for all 3 providers), silently falling back to
+a neutral reputation score every single time — routing "worked" but never
+actually used real on-chain reputation.
+
+**Fix:** removed the on-chain lookup entirely. Every agent's real tokenId is
+already recorded in `shared/addresses.json` at registration time (Backend
+A's job) — `findAgentTokenId()` now just matches on address there instead.
+Simpler and it's the only version that actually works.
+
+**Files touched:** `backend/agents/broker.ts`.
 
 ---
 
@@ -183,8 +395,25 @@ items 2, 3, and 4 above immediately if any of them are broken.
 
 ## Suggested order of operations
 
-1. **Fix the reveal hash proof (Critical)** — this is the actual product claim; everything else is secondary to this being real.
-2. **Confirm the broker's Gateway deposit exists** (High #3) — cheapest to check, and blocks everything else from working at all if missing.
-3. **Wire ERC-8183 job creation** (High #1) and **ERC-8004 dual feedback** (High #2) — both are "add a call in the post-reveal/pre-commit hook" fixes, similar shape, can be done together.
-4. **Run H6 for real** — once 1-3 are done, this is the actual proof the system works, not another code change.
-5. Medium items (4, 5, 6) — worth doing, not blocking a first real end-to-end run.
+**Everything in this file is now code-complete** (Critical, High #1/#2/#3,
+Medium #4/#5/#6) as of 2026-07-05. What's left is entirely operational, not
+coding:
+
+1. **Confirm the broker's Gateway deposit exists** (High #3) — run `npm
+   test`, look for the new Tier 0 check. Cheapest to check, and blocks
+   everything else (including ERC-8183's `fund()` and every `GatewayClient.pay()`
+   call) if missing. **Do this first.**
+2. **Provision `VALIDATOR_PK`** (High #2) in `backend/.env.local` — a wallet
+   that is NOT the broker's or any provider's own key — or reputation
+   feedback keeps logging a warning and skipping.
+3. **Run `circle services list --output json` for real once** (Medium #4) —
+   confirm the live schema still matches what `broker.ts` assumes; the new
+   warning log will tell you if it doesn't.
+4. **Run the new Tier 5 as a solo dry run**: `RUN_LIVE_E2E=true
+   TEST_CLIENT_PK=0x... npm test` — drives one real commit → stream → reveal
+   → settle cycle end to end, and specifically asserts `commitHash`/
+   `decisionPreimage` are present on settle (i.e. the Critical fix didn't
+   regress). Cheaper and faster to iterate on than H6 since it's solo.
+5. **Then run H6 for real** — all three of you on a call, frontend submits
+   through the UI, Backend A confirms on Arcscan. This is the actual finish
+   line; everything above just de-risks it.

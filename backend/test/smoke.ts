@@ -7,14 +7,26 @@
  *   Tier 1   provider endpoints (needs `npm run provider1/2/3` running)
  *   Tier 2   MCP monitor (needs `python mcp-monitor/monitor.py` running)
  *   Tier 3   entrypoint (needs `npm run entrypoint` running)
+ *   Tier 4   CCTP reachability — read-only, never a real burn/mint
+ *   Tier 5   a REAL live end-to-end stream, happy path — opt-in only
+ *            (RUN_LIVE_E2E=true + TEST_CLIENT_PK), since unlike every other
+ *            tier this actually spends real testnet USDC/gas.
+ *   Tier 6   a REAL live end-to-end stream, forced SLASH path — opt-in only
+ *            (RUN_LIVE_SLASH_TEST=true + TEST_CLIENT_PK). Uses
+ *            /stream-task's testOverride to deliberately set an unmeetable
+ *            predicted latency, so the resulting real on-chain slash is
+ *            honest, not faked — see tier6()'s own comment for why this
+ *            exists (Tier 5 alone never proves the slash path works).
  *
  * Tier 0/0.5 failures are hard failures (exit 1) — they mean the base
- * wiring is broken regardless of what's running. Tier 1-3 report SKIP
- * with instructions if that process isn't up, rather than failing the
- * whole run, since this is meant to be runnable before every service is
- * started.
+ * wiring is broken regardless of what's running. Tier 1-6 report SKIP
+ * with instructions if that process isn't up (or, for Tier 5/6, if they
+ * weren't explicitly opted into), rather than failing the whole run, since
+ * this is meant to be runnable before every service is started.
  *
  * Usage: npm test
+ *        RUN_LIVE_E2E=true TEST_CLIENT_PK=0x... npm test        (+ Tier 5)
+ *        RUN_LIVE_SLASH_TEST=true TEST_CLIENT_PK=0x... npm test (+ Tier 6)
  */
 
 import "../lib/config.js";
@@ -24,6 +36,8 @@ import { privateKeyToAccount } from "viem/accounts";
 import { addresses, athenaCommitAbi } from "../lib/config.js";
 import { publicClient, requireEnv } from "../lib/chain.js";
 import { closeMcpClient, getFinalVerdict, recordCallResult } from "../mcp-monitor/client.js";
+import { DECISION_PREIMAGE_FIELDS } from "../stream/streamLoop.js";
+import { GatewayClient } from "@circle-fin/x402-batching/client";
 
 type Status = "PASS" | "FAIL" | "SKIP";
 interface Result {
@@ -66,6 +80,27 @@ async function tier0() {
   await check("0", "RPC reachable (publicClient.getBlockNumber)", async () => {
     const block = await publicClient.getBlockNumber();
     return `block #${block} via ${process.env.RPC_URL ? "RPC_URL override" : addresses.rpc_public}`;
+  });
+
+  await check("0", "decisionObj field list matches expected (drift guard)", async () => {
+    const expected = [
+      "confidenceScore",
+      "nonce",
+      "predictedLatencyMs",
+      "predictedQualityScore",
+      "selectedProvider",
+      "selectedProviderUrl",
+      "taskId",
+      "timestamp",
+    ];
+    const actual = [...DECISION_PREIMAGE_FIELDS];
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+      throw new Error(
+        `streamLoop.ts's DECISION_PREIMAGE_FIELDS changed (now: ${actual.join(", ")}) — if intentional, update ` +
+          `this test's expected array AND AthenaCommit.sol's commit() NatSpec comment together.`
+      );
+    }
+    return `${actual.length} fields locked: ${actual.join(", ")}`;
   });
 
   await check("0", "AthenaCommit.computeTaskId matches local keccak256", async () => {
@@ -145,6 +180,26 @@ async function tier0() {
       lines.push(`${role}: ${usdcFormatted} USDC, ${nativeFormatted} native gas${flag}`);
     }
     return lines.join(" | ");
+  });
+
+  // Holding USDC in the broker's wallet is NOT the same as having it
+  // deposited into Circle Gateway — GatewayClient.pay() (what streamLoop.ts
+  // uses per call) draws from the Gateway-custodied balance, not the plain
+  // wallet balance already checked above. Previously this step only existed
+  // as a printed CLI instruction in wallets/setup.ts, never actually
+  // verified anywhere — so a missing deposit would only surface as a real
+  // stream failing partway through, not as a test failure beforehand.
+  await check("0", "broker's Circle Gateway deposit (not just wallet balance)", async () => {
+    const brokerPk = requireEnv("BROKER_PK") as `0x${string}`;
+    const gateway = new GatewayClient({ chain: "arcTestnet", privateKey: brokerPk });
+    const balances = await gateway.getBalances();
+    if (balances.gateway.available === 0n) {
+      throw new Error(
+        `Gateway available balance is 0 — every real stream will fail at GatewayClient.pay(). Run: ` +
+          `circle gateway deposit --amount 10 --address ${gateway.address} --chain ARC-TESTNET --method direct`
+      );
+    }
+    return `wallet=${balances.wallet.formatted} USDC, Gateway available=${balances.gateway.formattedAvailable} USDC`;
   });
 }
 
@@ -365,6 +420,188 @@ async function tier4() {
   });
 }
 
+// ── Tier 5: a real live end-to-end stream — opt-in only, costs real funds ──
+//
+// Every other tier deliberately stops at the 402 challenge (see Tier 1/3) to
+// avoid spending real testnet USDC/gas on every `npm test` run. That's the
+// right default, but it also means no automated check in this file has ever
+// proven a real commit -> stream -> reveal -> settle cycle actually
+// completes — only a manual live run (H6) has. This tier closes that gap,
+// but only when explicitly opted into: set RUN_LIVE_E2E=true and
+// TEST_CLIENT_PK (a funded wallet, separate from the broker/providers, with
+// USDC deposited into Gateway to pay the $0.01 /stream-task fee).
+
+async function tier5() {
+  if (process.env.RUN_LIVE_E2E !== "true") {
+    skip(
+      "5",
+      "real end-to-end stream (commit -> stream -> reveal -> settle)",
+      "opt-in only, costs real testnet funds — set RUN_LIVE_E2E=true and TEST_CLIENT_PK to run"
+    );
+    return;
+  }
+
+  const testClientPk = process.env.TEST_CLIENT_PK as `0x${string}` | undefined;
+  if (!testClientPk) {
+    skip("5", "real end-to-end stream", "RUN_LIVE_E2E=true but TEST_CLIENT_PK is not set");
+    return;
+  }
+
+  const port = process.env.ENTRYPOINT_PORT ?? "3000";
+  const base = `http://localhost:${port}`;
+
+  let entrypointUp = true;
+  try {
+    const res = await fetchWithTimeout(`${base}/health`);
+    if (!res.ok) entrypointUp = false;
+  } catch {
+    entrypointUp = false;
+  }
+  if (!entrypointUp) {
+    skip("5", "real end-to-end stream", "entrypoint not running — start with npm run entrypoint");
+    return;
+  }
+
+  await check("5", "real end-to-end stream (commit -> stream -> reveal -> settle)", async () => {
+    const client = privateKeyToAccount(testClientPk);
+    const gateway = new GatewayClient({ chain: "arcTestnet", privateKey: testClientPk });
+
+    const { data } = await gateway.pay<{ taskId: `0x${string}`; statusUrl: string }>(`${base}/stream-task`, {
+      method: "POST",
+      body: {
+        taskDescription: "smoke test tier 5 — real live end-to-end run",
+        clientAddress: client.address,
+      },
+    });
+
+    const taskId = data.taskId;
+    if (!taskId) throw new Error("no taskId in /stream-task response");
+
+    const deadline = Date.now() + 120_000; // 2 minutes — well past a normal stream's real duration
+    let last: Record<string, unknown> | undefined;
+    while (Date.now() < deadline) {
+      const statusRes = await fetchWithTimeout(`${base}/stream-status/${taskId}`);
+      last = (await statusRes.json()) as Record<string, unknown>;
+      if (last?.phase === "settled" || last?.phase === "failed") break;
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+
+    if (!last || (last.phase !== "settled" && last.phase !== "failed")) {
+      throw new Error(`stream ${taskId} did not reach a terminal phase within 2 minutes (last phase: ${last?.phase})`);
+    }
+    if (last.phase === "failed") {
+      throw new Error(`stream ${taskId} failed: ${last.error}`);
+    }
+    // This is exactly the property the Critical fix (PENDING.md) exists to
+    // guarantee — if these are ever missing on a settled stream, the seal/
+    // reveal wiring in streamLoop.ts has regressed.
+    if (!last.commitHash || !last.decisionPreimage) {
+      throw new Error("stream settled but commitHash/decisionPreimage were never exposed — the reveal fix regressed");
+    }
+
+    return (
+      `taskId=${taskId} settled: predictionMet=${last.predictionMet}, bondStatus=${last.bondStatus}, ` +
+      `${last.callsCompleted} calls, commitHash+decisionPreimage present and externally verifiable`
+    );
+  });
+}
+
+// ── Tier 6: a real live end-to-end SLASH — opt-in only, costs real funds ──
+//
+// Tier 5 proves the happy path settles for real. It does NOT prove the
+// slash path does, because our real providers report a steady qualityScore
+// with reasonable latency — an organic run essentially never fails its own
+// prediction. Without this, the only place "misses -> slash" was ever
+// tested was Tier 2, against synthetic data fed directly to the MCP
+// monitor — that proves the monitor's verdict *logic*, not a real
+// commit -> bond -> reveal -> slash-to-client transfer on-chain.
+//
+// This forces a real slash honestly, not by faking anything: it uses
+// /stream-task's testOverride to set predictedLatencyMs: 0 — no real HTTP
+// round-trip (payment negotiation + provider response) can ever complete in
+// 0ms, so every call genuinely, correctly fails to meet that (deliberately
+// engineered) prediction. The resulting slash is real: real bond, real
+// on-chain transfer to the client, real MCP monitor verdict — the only
+// thing rigged is which number Athena predicted, same as Tier 5 rigs
+// nothing and lets prediction be real.
+
+async function tier6() {
+  if (process.env.RUN_LIVE_SLASH_TEST !== "true") {
+    skip(
+      "6",
+      "real end-to-end SLASH path (forced-impossible prediction)",
+      "opt-in only, costs real testnet funds — set RUN_LIVE_SLASH_TEST=true and TEST_CLIENT_PK to run"
+    );
+    return;
+  }
+
+  const testClientPk = process.env.TEST_CLIENT_PK as `0x${string}` | undefined;
+  if (!testClientPk) {
+    skip("6", "real end-to-end SLASH path", "RUN_LIVE_SLASH_TEST=true but TEST_CLIENT_PK is not set");
+    return;
+  }
+
+  const port = process.env.ENTRYPOINT_PORT ?? "3000";
+  const base = `http://localhost:${port}`;
+
+  let entrypointUp = true;
+  try {
+    const res = await fetchWithTimeout(`${base}/health`);
+    if (!res.ok) entrypointUp = false;
+  } catch {
+    entrypointUp = false;
+  }
+  if (!entrypointUp) {
+    skip("6", "real end-to-end SLASH path", "entrypoint not running — start with npm run entrypoint");
+    return;
+  }
+
+  await check("6", "real end-to-end SLASH path (forced-impossible prediction -> bond slashed on-chain)", async () => {
+    const client = privateKeyToAccount(testClientPk);
+    const gateway = new GatewayClient({ chain: "arcTestnet", privateKey: testClientPk });
+
+    const { data } = await gateway.pay<{ taskId: `0x${string}` }>(`${base}/stream-task`, {
+      method: "POST",
+      body: {
+        taskDescription: "smoke test tier 6 — deliberately impossible prediction to force a real slash",
+        clientAddress: client.address,
+        maxCalls: 5,
+        testOverride: { predictedLatencyMs: 0 },
+      },
+    });
+
+    const taskId = data.taskId;
+    if (!taskId) throw new Error("no taskId in /stream-task response");
+
+    const deadline = Date.now() + 120_000;
+    let last: Record<string, unknown> | undefined;
+    while (Date.now() < deadline) {
+      const statusRes = await fetchWithTimeout(`${base}/stream-status/${taskId}`);
+      last = (await statusRes.json()) as Record<string, unknown>;
+      if (last?.phase === "settled" || last?.phase === "failed") break;
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+
+    if (!last || (last.phase !== "settled" && last.phase !== "failed")) {
+      throw new Error(`stream ${taskId} did not reach a terminal phase within 2 minutes (last phase: ${last?.phase})`);
+    }
+    if (last.phase === "failed") {
+      throw new Error(`stream ${taskId} failed outright rather than settling with a slash: ${last.error}`);
+    }
+    if (last.predictionMet !== false) {
+      throw new Error(`expected predictionMet=false (0ms latency prediction can never be met), got ${last.predictionMet}`);
+    }
+    if (last.bondStatus !== "slashed") {
+      throw new Error(`expected bondStatus="slashed", got "${last.bondStatus}"`);
+    }
+
+    return (
+      `taskId=${taskId} correctly SLASHED on-chain: predictionMet=false, bondStatus=slashed, ` +
+      `revealTxHash=${last.revealTxHash}`
+    );
+  });
+}
+
 // ── Runner ────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -374,6 +611,8 @@ async function main() {
   await tier2();
   await tier3();
   await tier4();
+  await tier5();
+  await tier6();
 
   const icon: Record<Status, string> = { PASS: "✅", FAIL: "❌", SKIP: "⚠️ " };
   let hardFailures = 0;

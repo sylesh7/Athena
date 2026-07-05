@@ -35,7 +35,19 @@ export interface AthenaAddresses {
     permit2: string;
     create2Factory: string;
   };
-  agents: Record<string, { address: string; tokenId: string; name: string; role: string }>;
+  agents: Record<
+    string,
+    {
+      address: string;
+      tokenId: string;
+      name: string;
+      role: string;
+      // Present for Circle Developer-Controlled Wallet agents (providers) —
+      // absent for the broker, which is a plain EOA. See wallets/setupCircleProviders.ts.
+      custody?: "circle-dcw";
+      circleWalletId?: string;
+    }
+  >;
 }
 
 function readJson<T>(path: string): T {
@@ -54,6 +66,17 @@ export function loadAthenaCommitAbi() {
 
 export const addresses = loadAddresses();
 export const athenaCommitAbi = loadAthenaCommitAbi() as Abi;
+
+// createGatewayMiddleware's `facilitatorUrl` defaults to Circle's MAINNET
+// Gateway facilitator ("https://gateway-api.circle.com") if not passed
+// explicitly — confirmed from @circle-fin/x402-batching/server's own .d.ts,
+// not assumed. A comment in providerServer.ts previously claimed testnet was
+// the default; it wasn't, and every Gateway-protected endpoint (all 3
+// providers + the entrypoint) was silently pointed at a facilitator that has
+// never heard of Arc Testnet — surfaced by test/smoke.ts Tier 5 actually
+// attempting a real paid request for the first time. Centralized here so
+// both call sites can't drift out of sync with each other again.
+export const GATEWAY_TESTNET_FACILITATOR_URL = "https://gateway-api-testnet.circle.com";
 
 export const USDC_DECIMALS = 6;
 

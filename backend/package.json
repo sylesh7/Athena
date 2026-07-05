@@ -10,6 +10,7 @@
     "wallets:circle-fund": "tsx wallets/fundCircleProviders.ts",
     "wallets:circle-register-agents": "tsx wallets/registerCircleProviders.ts",
     "wallets:register-broker": "tsx wallets/registerBroker.ts",
+    "wallets:deposit-gateway": "tsx wallets/depositGateway.ts",
     "provider1": "tsx agents/provider1.ts",
     "provider2": "tsx agents/provider2.ts",
     "provider3": "tsx agents/provider3.ts",
