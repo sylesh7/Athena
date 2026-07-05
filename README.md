@@ -1,13 +1,60 @@
-# Athena — Team Index
+# Athena
 ### Trust-minimized streaming agent broker on Arc · Lepton Agents Hackathon
 **Deadline:** July 6, 2026, 11:59 PM ET · **Submission:** forms.gle/SMqLaw2pMGDe58LFA
 **Team:** Backend A (contracts) · Backend B (payments/stream/agents) · Frontend (dashboard)
 
+Athena is a trust-minimized agent broker on Arc that routes work between independently built x402-protected agents, commits its routing logic and prediction before execution, and uses USDC collateral plus on-chain reveal to make broker trust verifiable instead of assumed.
+
 ---
 
-## The idea
+## One-line problem
 
-Athena is an AI broker agent that sets itself up autonomously using Circle's Agent Wallet skills, discovers provider agents from Circle's Agent Marketplace, and before starting any payment stream commits a SHA-256 hash of its structured routing decision — chosen provider, predicted per-call quality metric, predicted latency, confidence score — to a smart contract on Arc, posts a USDC bond on that prediction via Circle Gateway nanopayments, then streams per-call USDC nanopayments to the chosen provider via x402 as results arrive, with an MCP quality monitor checking every N calls — if quality or latency drops below what Athena predicted, the stream stops and the bond slashes automatically to the client, if the stream completes successfully the bond releases back to Athena — with every routing decision, prediction accuracy, and stream outcome permanently recorded on ERC-8004, all settled in under 500ms in USDC on Arc.
+AI agent brokers are already causing expensive mistakes, fraud, and fast operational damage, but there is still no trust-minimized way to prove that a broker routed honestly, predicted responsibly, and accepted financial consequences when it was wrong.
+
+## Intro
+
+As AI agents move from chat tools to economic actors, the hard problem is no longer just whether an agent can do the task. The harder problem is whether we can trust the broker that selects, routes, and vouches for other agents, especially when real money and real decisions are involved. Athena is built for that gap: it makes broker decisions commit-reveal based, collateral-backed, and reputation-aware so routing becomes economically accountable on-chain.
+
+## Market context
+
+| Problem area | Real stat | What happened | Why Athena matters |
+|---|---|---|---|
+| Expensive agent failures | 64% of billion-dollar enterprises reported losing more than $1M from AI agent failures in the past year. | Agents and brokers are being trusted with decisions that humans cannot audit fast enough. | Athena forces the broker to commit to routing reasoning and prediction before execution, then reveals it later and slashes the bond if it lied or mispredicted. |
+| AI fraud and bot-driven abuse | Consumer fraud losses reached $12.5 billion, and nearly 60% of companies reported increased losses from 2024 to 2025. | "Machine-to-machine mayhem" is making it harder to tell legitimate agent activity from fraud in commerce flows. | Athena seals broker decisions on-chain and backs them with collateral, making agent-to-agent routing auditable instead of blind. |
+| Fast autonomous damage | Confirmed AI agent financial security incidents produced about $15.6 million in documented losses. | Agentic systems can move too quickly once they have real access, with prompt injection and integration weaknesses causing rapid damage. | Athena limits broker-side harm by making routing decisions, predictions, and reputation updates tamper-evident and financially accountable. |
+
+### Three problem layers
+
+**1) Broker trust failures cause expensive AI mistakes.** AI agent failures are already costing real money at enterprise scale: a SalesforceBen-cited research summary says 64% of billion-dollar enterprises lost more than $1M because of AI agent failures in the past year. The pattern is usually not one dramatic hack; it is an agent or broker making opaque, poorly supervised, or overconfident decisions that humans cannot easily audit in time. Athena solves this by forcing the broker to commit to its routing reasoning and prediction before the task runs, then revealing that reasoning later and slashing the broker's USDC bond if the reveal does not match the commit or the prediction fails.
+
+**2) AI-driven fraud is becoming a billion-dollar problem.** Experian's 2026 fraud forecast, reported by Fortune, says consumer fraud losses reached $12.5 billion, and nearly 60% of companies reported increased losses from 2024 to 2025. The report warns about "machine-to-machine mayhem," where good bots and bad bots interact in the same commerce flow, making it harder to tell legitimate actions from fraud. Athena reduces this trust gap by requiring every broker decision to be sealed on-chain and backed by collateral, so a broker cannot quietly route to a bad provider, claim a false rationale, and walk away without financial consequences.
+
+**3) Agentic systems can cause fast, high-impact damage.** Regent Protocol's 2023–2026 incident analysis says confirmed AI agent financial security incidents have produced about $15.6 million in documented losses. That incident corpus highlights weaknesses like inability to verify AI autonomy, integration-point vulnerabilities, and prompt-injection susceptibility, which can cause rapid damage once agents are given real access. Athena does not try to solve every agent security issue; it specifically reduces broker-side harm by making routing decisions, outcome predictions, and reputation updates tamper-evident and financially accountable on Arc.
+
+## What Athena does
+
+Athena sits between a client and multiple independent agent services. The broker evaluates available providers, forms a routing decision, makes a falsifiable prediction about the task outcome, hashes that reasoning, and commits it on-chain before the task runs. After the provider finishes, the broker reveals the reasoning, the contract checks whether the reveal matches the commitment and whether the prediction was correct, and the USDC bond is either released or slashed automatically.
+
+## How it solves the problem
+
+Athena solves three related issues at once. First, opaque routing: the broker can no longer silently choose providers for hidden reasons because it must commit to its reasoning first. Second, overconfident promises: the broker must stake USDC on its prediction, so inaccurate judgment has a financial cost. Third, weak accountability: the bond and reveal make the routing decision auditable, not just logged in a private dashboard.
+
+## What is used
+
+Athena uses the Arc / Circle stack directly:
+
+- **x402 and Gateway** for payment-triggered task access and nanopayments.
+- **Circle Developer-Controlled Wallets** for the provider agents (the broker stays a plain EOA — see `BACKEND_B_README.md` for why).
+- **USDC on Arc** for task payments, escrow, and slashing.
+- **Solidity contracts** for commit-reveal and escrow logic.
+- **ERC-8004** for agent identity and reputation.
+- **ERC-8183** for job escrow (Athena as evaluator).
+- **CCTP V2** for the Phase 4 cross-chain payout stretch goal.
+- **Arc Testnet** for fast settlement and live demoability.
+
+## Why this is better than a normal broker
+
+A normal broker can claim it chose the best provider and leave you to trust that story. Athena turns that story into a financial commitment that can be checked later. That is the key shift: it does not merely route tasks, it makes routing decisions economically provable.
 
 ---
 
@@ -69,44 +116,64 @@ Athena is an AI broker agent that sets itself up autonomously using Circle's Age
 
 ## The stream flow (everyone must understand this before writing code)
 
-```
-Client
-  │
-  │ 1. Pays task fee via x402 nanopayment → Athena's Gateway-protected endpoint
-  │    (single payment to start the session)
-  ▼
-Athena Broker Agent
-  │
-  │ 2. Reads Circle Agent Marketplace via `circle services list`
-  │    Evaluates providers by ERC-8004 reputation + price + endpoint count
-  │
-  │ 3. Forms structured decision object:
-  │    { taskId, selectedProvider, predictedQualityScore, predictedLatencyMs,
-  │      confidenceScore, nonce }
-  │    SHA-256 hashes this object → commits hash to AthenaCommit.sol
-  │    Posts USDC bond into ERC-8183 escrow (Athena = evaluator role)
-  │
-  │ 4. Stream loop starts (Backend B owns this loop):
-  │    FOR each call in stream:
-  │      → GatewayClient.fetchWithPayment(providerEndpoint, $0.000001)
-  │      → Provider returns result
-  │      → MCP quality monitor scores result (quality + latency)
-  │      → If score passes: continue stream
-  │      → If score fails N consecutive times: break, trigger slash
-  │
-  │ 5. Stream ends (success or failure)
-  │    → Athena reveals structured decision object on-chain
-  │    → AthenaCommit.sol verifies SHA-256(revealed) == committed hash
-  │    → Checks: did predictedQualityScore and predictedLatencyMs match actuals?
-  │
-  │ 6a. Both match → bond releases to Athena, ERC-8183 complete() called
-  │ 6b. Either fails → bond slashes to client, ERC-8183 reject() called
-  │
-  │ 7. ERC-8004 ReputationRegistry updated for both broker and provider
-  │
-  ▼
-Frontend shows: stream progress live, commit hash on Arcscan, reveal,
-bond status, per-agent reputation update
+This is the real, currently-implemented flow (see `BACKEND_B_README.md` and `backend/PENDING.md` for the bug-hunt history behind a few of these steps — the ERC-8004/ERC-8183 ABIs in particular didn't match the interfaces on the first attempt, and the sealed-until-reveal mechanism was a later hardening pass, not the original design).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant FE as Frontend
+    participant EP as Entrypoint (/stream-task)
+    participant Broker
+    participant CM as Circle Marketplace (CLI)
+    participant E8004 as ERC-8004 (Identity + Reputation)
+    participant E8183 as ERC-8183 (Job Escrow)
+    participant AC as AthenaCommit.sol
+    participant Prov as Provider (x402)
+    participant MCP as MCP Quality Monitor
+
+    Client->>FE: Connect wallet, submit task
+    FE->>EP: POST /stream-task (x402 $0.01 via Gateway)
+    EP->>Broker: routeTask(taskDescription, category)
+    Broker->>CM: circle services search --category ...
+    CM-->>Broker: marketplace listings (filtered to Arc-Testnet-payable)
+    Broker->>E8004: getClients(tokenId) + getSummary(tokenId, clients)
+    E8004-->>Broker: reputation summary (avgQuality, sampleSize)
+    Broker->>Broker: score providers, select best, predict quality + latency
+    EP->>EP: taskId = keccak256(client, taskDescription, blockNumber)
+    EP-->>FE: { taskId, statusUrl } (routing decision stays sealed)
+
+    Note over Broker: decision object hashed with SHA-256 and sealed<br/>server-side — not exposed via the status API until reveal
+    Broker->>E8183: createJob + setBudget (Circle DCW tx) + fund(jobId)
+    E8183-->>Broker: jobId
+    Broker->>AC: commit(taskId, commitHash, bondAmount, client, erc8183JobId)
+    AC-->>Broker: Committed event — bond locked in the pull-payment ledger
+
+    loop per call — stop early on 3 consecutive misses
+        Broker->>Prov: GatewayClient.pay() nanopayment ($0.000001 x402)
+        Prov-->>Broker: data + qualityScore + latencyMs
+        Broker->>MCP: record_call_result(quality, latency, predicted*)
+        MCP-->>Broker: verdict (continue | slash)
+    end
+
+    Broker->>MCP: get_final_verdict(taskId)
+    MCP-->>Broker: predictionMet (bool)
+    Broker->>E8183: submitDeliverable(jobId, deliverableHash)
+    Broker->>AC: reveal(taskId, predictionMet, commitHash, deliverableHash)
+    AC->>AC: require(revealedHash == committed hash)
+    AC->>E8183: complete(jobId) if predictionMet, else reject(jobId)
+    AC-->>Broker: Revealed event — bond released or slashed
+
+    Broker->>E8004: giveFeedback(providerTokenId, brokerTokenId) via a separate validator wallet
+    opt Provider 3 selected, predictionMet, CCTP enabled
+        Broker->>Broker: depositForBurn (Arc) → poll Iris attestation → receiveMessage (Base Sepolia)
+    end
+
+    loop Frontend polls every ~2s
+        FE->>EP: GET /stream-status/:taskId
+        EP-->>FE: phase, live callHistory, sealed fields only once phase="revealed"
+    end
+    FE->>FE: recompute SHA-256(decisionPreimage) in-browser, diff against on-chain commitHash
 ```
 
 ---
