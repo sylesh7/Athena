@@ -11,8 +11,13 @@ function truncate(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
-async function switchOrAddArcTestnet() {
-  const ethereum = (window as unknown as { ethereum?: any }).ethereum;
+// Takes the provider explicitly rather than reading window.ethereum — with
+// multiple wallet extensions installed, they race to define that single
+// global (see the EIP-6963 comment in handleWalletClick below), so
+// window.ethereum can silently be a DIFFERENT wallet than the one actually
+// connected. Sending wallet_switchEthereumChain there would ask the wrong
+// extension, which likely has no connected account and would fail or no-op.
+async function switchOrAddArcTestnet(ethereum: { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> } | null | undefined) {
   if (!ethereum) return;
   const chainIdHex = `0x${arcTestnet.id.toString(16)}`;
   try {
@@ -49,7 +54,7 @@ export default function Nav() {
   const pathname = usePathname();
   const router = useRouter();
   const isLanding = pathname === "/";
-  const { address, isConnected, chainId } = useAccount();
+  const { address, isConnected, chainId, connector: activeConnector } = useAccount();
   const { connectAsync, connectors, isPending: isConnecting } = useConnect();
   const { disconnect } = useDisconnect();
   const [isSwitching, setIsSwitching] = useState(false);
@@ -89,7 +94,24 @@ export default function Nav() {
       // switchOrAddArcTestnet() below already has the correct fallback for
       // exactly that case. Connect first with no chain requirement, then
       // switch/add the chain as a separate, already-proven-reliable step.
-      const metaMask = connectors.find((c) => c.id === "metaMask" || c.name === "MetaMask") ?? connectors[0];
+      //
+      // Prefer the EIP-6963-discovered MetaMask connector ("io.metamask",
+      // wagmi's default multiInjectedProviderDiscovery) over the manual
+      // injected({ target: "metaMask" }) one below. The manual connector
+      // resolves its provider by reading window.ethereum at connect time —
+      // when multiple wallet extensions are installed, they race to define
+      // that single global, so window.ethereum can end up being a DIFFERENT
+      // wallet even with MetaMask installed and unlocked (confirmed live:
+      // MetaMask's own inpage.js logs "encountered an error setting the
+      // global Ethereum provider ... likely due to another wallet extension
+      // also setting" in exactly this case). The EIP-6963 connector instead
+      // holds a direct reference to the provider object MetaMask announced
+      // via its own 'eip6963:announceProvider' event, so it can't be
+      // shadowed by another extension winning the window.ethereum race.
+      const metaMask =
+        connectors.find((c) => c.id === "io.metamask") ??
+        connectors.find((c) => c.id === "metaMask" || c.name === "MetaMask") ??
+        connectors[0];
       if (!metaMask) {
         setConnectError("No injected wallet found — install the MetaMask extension and reload this page.");
         return;
@@ -130,12 +152,14 @@ export default function Nav() {
       // Now that a real account is connected, make sure it's on Arc Testnet —
       // switchOrAddArcTestnet() handles both "switch to an already-added
       // chain" and "wallet has never seen this chain, add it" (error 4902).
+      // Use metaMask's own provider (the connector we just connected with),
+      // not window.ethereum — see switchOrAddArcTestnet's comment.
       setIsSwitching(true);
-      await switchOrAddArcTestnet();
+      await switchOrAddArcTestnet(await metaMask.getProvider().catch(() => null) as any);
       setIsSwitching(false);
     } else if (wrongNetwork) {
       setIsSwitching(true);
-      await switchOrAddArcTestnet();
+      await switchOrAddArcTestnet(await activeConnector?.getProvider().catch(() => null) as any);
       setIsSwitching(false);
     } else {
       disconnect();
