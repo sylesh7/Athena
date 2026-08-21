@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useAccount, useConnect, useDisconnect } from "wagmi";
+import { ProviderNotFoundError, useAccount, useConnect, useDisconnect } from "wagmi";
 import { arcTestnet } from "@/lib/wagmi";
 
 function truncate(address: string) {
@@ -98,6 +98,16 @@ export default function Nav() {
         await connectAsync({ connector: metaMask });
       } catch (err) {
         console.error("Wallet connect failed:", err);
+        // The connector can be registered (connectors.find above succeeds)
+        // even with no matching window.ethereum provider actually present —
+        // wagmi only discovers that at connect() time, throwing
+        // ProviderNotFoundError instead of a generic Error. Without this
+        // check that surfaced as a raw internal message ("Provider not
+        // found.\n\nVersion: @wagmi/core@3.5.5") instead of an actionable one.
+        if (err instanceof ProviderNotFoundError) {
+          setConnectError("No MetaMask extension detected — install it from metamask.io/download and reload this page.");
+          return;
+        }
         const message = err instanceof Error ? err.message : String(err);
         setConnectError(
           message.toLowerCase().includes("rejected") || message.toLowerCase().includes("denied")
