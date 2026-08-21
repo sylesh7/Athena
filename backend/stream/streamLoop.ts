@@ -32,6 +32,7 @@ import { createAndFundJob, submitDeliverable } from "../lib/erc8183.js";
 import { updateStream, sealCommitment, getSealedCommitment } from "./state.js";
 import type { CallRecord } from "./state.js";
 import type { RoutingDecision } from "../agents/broker.js";
+import { pushLog } from "../lib/logBuffer.js";
 
 const erc20ApproveAbi = parseAbi(["function approve(address spender, uint256 amount) external returns (bool)"]);
 
@@ -113,6 +114,10 @@ export async function runStream(config: StreamConfig): Promise<StreamResult> {
   // hash externally verifiable later: anyone can pull decisionPreimage once
   // revealed, rehash it themselves, and diff against the on-chain commitHash.
   sealCommitment(config.taskId, commitHash, canonicalJson);
+  // Deliberately generic — the routing decision (provider, prediction) stays
+  // sealed until reveal, and that must hold for this log feed too, or the
+  // Evidence page would leak it early through a side channel.
+  pushLog("stream", "info", `Stream ${config.taskId}: decision sealed, committing on-chain`);
 
   // 3. Approve the bond, then commit() before anything streams. Note: the
   // routing decision (provider, predicted values) is deliberately NOT
@@ -137,8 +142,10 @@ export async function runStream(config: StreamConfig): Promise<StreamResult> {
         description: `Athena stream ${config.taskId}`,
         bondAmountUnits: config.bondAmountUnits,
       });
+      pushLog("erc8183", "info", `Stream ${config.taskId}: ERC-8183 job ${BigInt(erc8183JobId)} created and funded`);
     } catch (err) {
       console.error(`ERC-8183 job creation failed for stream ${config.taskId} — continuing without it:`, err);
+      pushLog("erc8183", "warn", `Stream ${config.taskId}: ERC-8183 job creation failed, continuing without it — ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -157,6 +164,7 @@ export async function runStream(config: StreamConfig): Promise<StreamResult> {
     args: [config.taskId, commitHash, config.bondAmountUnits, config.clientAddress, erc8183JobId],
   });
   await publicClient.waitForTransactionReceipt({ hash: commitTxHash });
+  pushLog("stream", "info", `Stream ${config.taskId}: bond committed on-chain (tx ${commitTxHash})`);
 
   updateStream(config.taskId, {
     phase: "streaming",
@@ -214,10 +222,20 @@ export async function runStream(config: StreamConfig): Promise<StreamResult> {
         lastLatencyMs: latencyMs,
         callHistory: [...callHistory],
       });
+      pushLog(
+        "stream",
+        "info",
+        `Stream ${config.taskId}: call ${i} — quality ${qualityScore.toFixed(2)}, latency ${latencyMs}ms, verdict ${verdict.verdict}`
+      );
 
       if (verdict.verdict === "slash") {
         console.log(
           `Stream ${config.taskId} stopping at call ${i} — ${verdict.consecutive_failures} consecutive misses`
+        );
+        pushLog(
+          "stream",
+          "warn",
+          `Stream ${config.taskId}: stopping at call ${i} — ${verdict.consecutive_failures} consecutive misses`
         );
         break;
       }
@@ -235,6 +253,11 @@ export async function runStream(config: StreamConfig): Promise<StreamResult> {
       // sentinel.
       const latencyMs = Date.now() - startTime;
       console.error(`Stream ${config.taskId} call ${i} failed:`, err);
+      pushLog(
+        "stream",
+        "error",
+        `Stream ${config.taskId}: call ${i} failed — ${err instanceof Error ? err.message : String(err)}`
+      );
       try {
         await recordCallResult(config.monitorUrl, {
           task_id: config.taskId,
@@ -272,6 +295,7 @@ export async function runStream(config: StreamConfig): Promise<StreamResult> {
   // getCommitment(taskId).commitHash read directly on-chain. That's the
   // actual proof; the on-chain check alone is not.
   const { prediction_met } = await getFinalVerdict(config.monitorUrl, config.taskId);
+  pushLog("stream", "info", `Stream ${config.taskId}: final MCP verdict — predictionMet=${prediction_met}`);
 
   // If a real ERC-8183 job is linked, the provider must submit() before
   // AthenaCommit.reveal() can complete()/reject() it (job must be in the
@@ -285,8 +309,14 @@ export async function runStream(config: StreamConfig): Promise<StreamResult> {
     deliverableHash = await sha256Hex(JSON.stringify(callHistory));
     try {
       await submitDeliverable(config.decision.selectedProvider.address, erc8183JobId, deliverableHash);
+      pushLog("erc8183", "info", `Stream ${config.taskId}: deliverable submitted for job ${BigInt(erc8183JobId)}`);
     } catch (err) {
       console.error(`ERC-8183 submit() failed for stream ${config.taskId} — reveal() will still settle safely:`, err);
+      pushLog(
+        "erc8183",
+        "warn",
+        `Stream ${config.taskId}: deliverable submit failed, reveal() will still settle safely — ${err instanceof Error ? err.message : String(err)}`
+      );
     }
   }
 
@@ -314,7 +344,21 @@ export async function runStream(config: StreamConfig): Promise<StreamResult> {
         `commit hash. Revealing with the trusted sealed hash regardless, to avoid a HashMismatch revert that would ` +
         `permanently strand the bond. This warrants investigation.`
     );
+    pushLog(
+      "stream",
+      "error",
+      `Stream ${config.taskId}: preimage integrity check FAILED — revealing with the trusted sealed hash regardless`
+    );
   }
+
+  // Safe to log the previously-sealed provider/prediction now — phase is
+  // "revealed" and these values are about to become public via
+  // GET /stream-status/:taskId anyway.
+  pushLog(
+    "stream",
+    "info",
+    `Stream ${config.taskId}: revealing — provider ${config.decision.selectedProvider.address}, predicted quality ${config.decision.predictedQualityScore}, predicted latency ${config.decision.predictedLatencyMs}ms`
+  );
 
   updateStream(config.taskId, {
     phase: "revealed",
@@ -333,6 +377,7 @@ export async function runStream(config: StreamConfig): Promise<StreamResult> {
     args: [config.taskId, prediction_met, sealed.commitHash, deliverableHash],
   });
   await publicClient.waitForTransactionReceipt({ hash: revealTxHash });
+  pushLog("stream", "info", `Stream ${config.taskId}: reveal confirmed on-chain (tx ${revealTxHash})`);
 
   updateStream(config.taskId, {
     phase: "settled",
@@ -340,6 +385,11 @@ export async function runStream(config: StreamConfig): Promise<StreamResult> {
     predictionMet: prediction_met,
     bondStatus: prediction_met ? "released" : "slashed",
   });
+  pushLog(
+    "stream",
+    "info",
+    `Stream ${config.taskId}: settled — bond ${prediction_met ? "released" : "slashed"}`
+  );
 
   // ERC-8004 reputation feedback for both broker and provider (README.md step
   // 7). Fire-and-forget, same convention as the CCTP hook below — a feedback
@@ -353,9 +403,18 @@ export async function runStream(config: StreamConfig): Promise<StreamResult> {
     predictionMet: prediction_met,
     avgQualityScore,
     revealTxHash,
-  }).catch((err) => {
-    console.error(`postStreamReputation failed for stream ${config.taskId}:`, err);
-  });
+  })
+    .then(() => {
+      pushLog("reputation", "info", `Stream ${config.taskId}: ERC-8004 feedback posted for broker and provider`);
+    })
+    .catch((err) => {
+      console.error(`postStreamReputation failed for stream ${config.taskId}:`, err);
+      pushLog(
+        "reputation",
+        "warn",
+        `Stream ${config.taskId}: ERC-8004 feedback posting failed — ${err instanceof Error ? err.message : String(err)}`
+      );
+    });
 
   // 6. Phase 4 (stretch): pay Provider 3 natively on Base Sepolia via CCTP,
   // instead of the Arc Gateway nanopayments already streamed. Opt-in
@@ -367,6 +426,7 @@ export async function runStream(config: StreamConfig): Promise<StreamResult> {
   const isProvider3 = config.decision.selectedProvider.address.toLowerCase() === (process.env.PROVIDER3_WALLET_ADDRESS ?? "").toLowerCase();
   if (prediction_met && isProvider3 && process.env.ENABLE_CCTP_PAYOUT === "true") {
     updateStream(config.taskId, { cctpStatus: "pending" });
+    pushLog("cctp", "info", `Stream ${config.taskId}: starting CCTP payout to Provider 3 on Base Sepolia`);
     payProvider3OnBase({
       brokerPk: config.brokerPk,
       amountUnits: config.bondAmountUnits,
@@ -374,6 +434,7 @@ export async function runStream(config: StreamConfig): Promise<StreamResult> {
     })
       .then(({ burnTxHash, mintTxHash }) => {
         updateStream(config.taskId, { cctpStatus: "minted", cctpBurnTxHash: burnTxHash, cctpMintTxHash: mintTxHash });
+        pushLog("cctp", "info", `Stream ${config.taskId}: CCTP payout minted on Base Sepolia (burn ${burnTxHash}, mint ${mintTxHash})`);
       })
       .catch((err) => {
         console.error(`CCTP payout failed for stream ${config.taskId}:`, err);
@@ -381,6 +442,7 @@ export async function runStream(config: StreamConfig): Promise<StreamResult> {
           cctpStatus: "failed",
           cctpError: err instanceof Error ? err.message : String(err),
         });
+        pushLog("cctp", "error", `Stream ${config.taskId}: CCTP payout failed — ${err instanceof Error ? err.message : String(err)}`);
       });
   }
 
