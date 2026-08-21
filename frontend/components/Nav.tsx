@@ -105,7 +105,18 @@ export default function Nav() {
         // check that surfaced as a raw internal message ("Provider not
         // found.\n\nVersion: @wagmi/core@3.5.5") instead of an actionable one.
         if (err instanceof ProviderNotFoundError) {
-          setConnectError("No MetaMask extension detected — install it from metamask.io/download and reload this page.");
+          // A common false-negative: Brave's built-in wallet claims
+          // window.ethereum and sets isMetaMask=true to spoof compatibility,
+          // which wagmi's injected({ target: "metaMask" }) deliberately
+          // rejects (see @wagmi/core's injected.ts targetMap.metaMask) since
+          // it isn't real MetaMask — so a real MetaMask extension can be
+          // installed and still be unreachable until Brave stops shadowing it.
+          const isBrave = (window as unknown as { ethereum?: { isBraveWallet?: boolean } }).ethereum?.isBraveWallet;
+          setConnectError(
+            isBrave
+              ? "Brave's built-in wallet is intercepting MetaMask. Go to brave://settings/web3, set \"Default Ethereum wallet\" to \"Extensions (no fallback)\", then reload this page."
+              : "No MetaMask extension detected — install it from metamask.io/download and reload this page."
+          );
           return;
         }
         const message = err instanceof Error ? err.message : String(err);
