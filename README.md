@@ -63,6 +63,19 @@ A normal broker can claim it chose the best provider and leave you to trust that
 
 ---
 
+## v2 — post-submission additions
+
+Built after the hackathon deadline, on the same real stack (no mocks, no new infra):
+
+- **Circle Compliance Engine gate.** Every `POST /stream-task` now screens the paying client's address through Circle's live Compliance Engine (`api.circle.com/v1/w3s/compliance/screening/addresses`) *before* the x402 Gateway middleware ever charges it — a `DENIED` or unreachable result rejects the request with no payment taken. Previously-unused piece of the Circle stack; verified live (testnet chain codes only, confirmed by testing mainnet codes correctly 400). Try it standalone at `GET /compliance/:address`, or live on the Evidence page.
+- **Evidence page** (`/evidence` in the frontend). Real-time proof the backend is actually doing what this README claims:
+  - **System Health** — live reachability of every service Athena depends on (3 providers, MCP monitor, Arc RPC), checked on load, not cached.
+  - **On-Chain Events** — `Committed`/`Revealed` events read directly off AthenaCommit via `eth_getLogs`, with Arcscan links. True regardless of whether the backend process has restarted since.
+  - **Live Backend Logs** — a structured, in-memory activity feed (`GET /logs`) of the stream loop's real decisions as they happen, with one hard rule preserved from the commit-reveal design: nothing before the reveal phase may log the sealed provider/prediction, or the log feed would leak the sealed decision through a side channel.
+  - **Compliance Screening tool** — screen any address live against Circle's Compliance Engine from the browser.
+
+---
+
 ## How this scores against every judging criterion
 
 | Criterion | Weight | How Athena scores |

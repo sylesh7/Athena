@@ -131,6 +131,86 @@ export function usdcStreamed(s: StreamStatus): number {
   return s.callsCompleted * PER_CALL_USDC;
 }
 
+// ── v2: Evidence page (logs, on-chain events, system health, compliance) ──
+
+export interface LogEntry {
+  id: number;
+  timestamp: number;
+  level: "info" | "warn" | "error";
+  source: string;
+  message: string;
+}
+
+export async function getLogs(sinceId?: number, signal?: AbortSignal): Promise<LogEntry[]> {
+  const url = new URL(`${ATHENA_API}/logs`);
+  if (sinceId !== undefined) url.searchParams.set("sinceId", String(sinceId));
+  const res = await fetch(url, { signal, cache: "no-store" });
+  if (!res.ok) throw new Error(`GET /logs -> ${res.status}`);
+  return ((await res.json()) as { logs: LogEntry[] }).logs;
+}
+
+export interface OnchainEvent {
+  type: "Committed" | "Revealed";
+  taskId: string;
+  blockNumber?: string;
+  txHash?: string | null;
+  broker: string;
+  client?: string;
+  commitHash?: string;
+  bondAmount?: string;
+  predictionMet?: boolean;
+  slashed?: boolean;
+}
+
+export async function getOnchainEvents(signal?: AbortSignal): Promise<{ events: OnchainEvent[]; fromBlock: string; toBlock: string; explorerBase: string }> {
+  const res = await fetch(`${ATHENA_API}/onchain-events`, { signal, cache: "no-store" });
+  if (!res.ok) throw new Error(`GET /onchain-events -> ${res.status}`);
+  return await res.json();
+}
+
+export interface ServiceHealth {
+  ok: boolean;
+  status?: number;
+  error?: string;
+  port?: number;
+  url?: string;
+  blockNumber?: string;
+}
+
+export interface SystemHealth {
+  checkedAt: string;
+  services: {
+    entrypoint: ServiceHealth;
+    provider1: ServiceHealth;
+    provider2: ServiceHealth;
+    provider3: ServiceHealth;
+    mcpMonitor: ServiceHealth;
+    arcTestnetRpc: ServiceHealth;
+  };
+}
+
+export async function getSystemHealth(signal?: AbortSignal): Promise<SystemHealth> {
+  const res = await fetch(`${ATHENA_API}/system-health`, { signal, cache: "no-store" });
+  if (!res.ok) throw new Error(`GET /system-health -> ${res.status}`);
+  return await res.json();
+}
+
+export interface ScreeningDecision {
+  result: "APPROVED" | "DENIED";
+  address: string;
+  screeningDate: string;
+  ruleName?: string;
+  actions?: string[];
+  id: string;
+}
+
+export async function screenAddress(address: string, signal?: AbortSignal): Promise<ScreeningDecision> {
+  const res = await fetch(`${ATHENA_API}/compliance/${address}`, { signal, cache: "no-store" });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json?.error ?? `GET /compliance/${address} -> ${res.status}`);
+  return json as ScreeningDecision;
+}
+
 export interface DashboardStatsData {
   totalStreams: number;
   totalUsdc: number;
