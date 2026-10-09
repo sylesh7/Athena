@@ -238,8 +238,8 @@ export const MOCK_OVERVIEW: TreasuryOverview = {
   runwayDays: 87,
   fundsUnderManagement: "153632500000",
   yieldPositions: [
-    { id: "yp-001", vault: "Morpho USDC", protocol: "Morpho Blue", token: "USDC", principal: "12000000000", currentValue: "12148320000", apy: 4.92, depositedAt: "2026-09-15T10:00:00Z" },
-    { id: "yp-002", vault: "Morpho USDC-2", protocol: "Morpho Blue", token: "USDC", principal: "8000000000", currentValue: "8065440000", apy: 4.08, depositedAt: "2026-09-22T14:00:00Z" },
+    { id: "yp-001", vault: "USYC Vault", protocol: "Arc Earn Kit", token: "USDC", principal: "12000000000", currentValue: "12148320000", apy: 4.92, depositedAt: "2026-09-15T10:00:00Z" },
+    { id: "yp-002", vault: "USYC Vault II", protocol: "Arc Earn Kit", token: "USDC", principal: "8000000000", currentValue: "8065440000", apy: 4.08, depositedAt: "2026-09-22T14:00:00Z" },
   ],
   gatewayBalances: [
     { domain: 26, chainName: "Arc", amount: "3200000000" },
@@ -266,7 +266,7 @@ export const MOCK_INVOICES: Invoice[] = [
 
 export const MOCK_DECISIONS: Decision[] = [
   { id: "0xdec001aabbccddee001122334455667788990011aabbccddee001122334455667", kind: "PAY", state: "revealed", payeeName: "Northwind Labs", token: "USDC", amount: "3500000000", rationale: "Invoice INV-0041 due in 5 days, three-way match passed, payee active, within VENDOR budget. Paying on schedule.", commitTx: "0xabc111", executeTx: "0xabc112", revealTx: "0xabc113", createdAt: "2026-10-09T10:30:00Z", revealedAt: "2026-10-09T10:31:45Z", decisionHash: "0x7f3a9b...", obligationId: "obl-001" },
-  { id: "0xdec002aabbccddee001122334455667788990011aabbccddee001122334455668", kind: "PAY_EARLY", state: "revealed", payeeName: "Acme Hosting", token: "USDC", amount: "299000000", rationale: "Early payment discount of 2% APR beats best vault yield (4.08%). Capturing $0.16 discount on $299 subscription.", commitTx: "0xbcd221", executeTx: "0xbcd222", revealTx: "0xbcd223", createdAt: "2026-10-09T09:15:00Z", revealedAt: "2026-10-09T09:17:02Z", decisionHash: "0x8e4c2a...", obligationId: "obl-002" },
+  { id: "0xdec002aabbccddee001122334455667788990011aabbccddee001122334455668", kind: "PAY_EARLY", state: "revealed", payeeName: "Acme Hosting", token: "USDC", amount: "299000000", rationale: "Early payment discount of 2% APR beats best Arc Earn Kit vault yield (4.08%). Capturing $0.16 discount on $299 subscription.", commitTx: "0xbcd221", executeTx: "0xbcd222", revealTx: "0xbcd223", createdAt: "2026-10-09T09:15:00Z", revealedAt: "2026-10-09T09:17:02Z", decisionHash: "0x8e4c2a...", obligationId: "obl-002" },
   { id: "0xdec003aabbccddee001122334455667788990011aabbccddee001122334455669", kind: "ESCALATE", state: "escalated", payeeName: "CloudCorp", token: "USDC", amount: "12000000000", rationale: "Payment amount $12,000 exceeds payee cap of $10,000. Escalating to approver.", commitTx: "0xcde331", executeTx: "0xcde332", revealTx: null, createdAt: "2026-10-09T08:00:00Z", revealedAt: null, decisionHash: "0x9f5d3b...", obligationId: "obl-003" },
   { id: "0xdec004aabbccddee001122334455667788990011aabbccddee001122334455670", kind: "PAY", state: "revealed", payeeName: "Stratum Analytics", token: "USDC", amount: "900000000", rationale: "Invoice due today, match passed, within budget. Paying on due date.", commitTx: "0xdef441", executeTx: "0xdef442", revealTx: "0xdef443", createdAt: "2026-10-08T14:00:00Z", revealedAt: "2026-10-08T14:02:10Z", decisionHash: "0xa06e4c...", obligationId: "obl-006" },
   { id: "0xdec005aabbccddee001122334455667788990011aabbccddee001122334455671", kind: "HOLD", state: "committed", payeeName: null, token: "USDC", amount: "0", rationale: "Cycle completed — 1 obligation held pending review queue resolution.", commitTx: "0xef5551", executeTx: null, revealTx: null, createdAt: "2026-10-08T10:30:00Z", revealedAt: null, decisionHash: "0xb17f5d...", obligationId: null },

@@ -111,7 +111,7 @@ These rules come before convenience. If a phase seems to require breaking one, s
    x402 pay link ──► collections │  roles · tokens · budgets    │                      │
    wallet ──payReceivable()──►   │  payee registry + cooldown   │──depositForBurn──► CCTP V2 ──► vendors (Base, etc.)
                          │       │  commit → execute → reveal   │                      │
-   Gateway mint ──────────────►  │  escalations · reserve       │──► yield wallet ──► Earn Kit vaults (Morpho …)
+   Gateway mint ──────────────►  │  escalations · reserve       │──► yield wallet ──► Arc Earn Kit vaults (USYC …)
    (consolidation)       │       │  audit arrears breaker       │──► fx wallet ──► App Kit Swap USDC→EURC ──► fund()
                          │       └──────────────┬───────────────┘──► spend wallet ──► Gateway ──► x402 services
                          │                      │ events                              │
