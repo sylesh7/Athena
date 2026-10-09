@@ -8,7 +8,6 @@ type Props = {
   as?: keyof React.JSX.IntrinsicElements;
 };
 
-/** Wraps content and fades it in when it scrolls into view. */
 export default function Reveal({ children, className = "", as = "div" }: Props) {
   const ref = useRef<HTMLElement>(null);
 

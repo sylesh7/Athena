@@ -10,13 +10,13 @@ const chakra = Chakra_Petch({
 });
 
 export const metadata: Metadata = {
-  title: "Athena",
+  title: "Athena — Autonomous Business Treasury",
   description:
-    "Athena commits a sealed routing prediction on-chain, posts a USDC bond, streams nanopayments via x402, and settles automatically based on verified outcomes — on Arc.",
+    "Athena runs a business treasury autonomously on Arc: reads invoices, forecasts cash flow, commits every decision on-chain before executing, and proves it on reveal. Tameion Agents Hackathon.",
   openGraph: {
-    title: "Athena",
+    title: "Athena — Autonomous Business Treasury",
     description:
-      "Athena commits a sealed routing prediction on-chain, posts a USDC bond, streams nanopayments via x402, and settles automatically based on verified outcomes — on Arc.",
+      "Athena runs a business treasury autonomously on Arc: reads invoices, forecasts cash flow, commits every decision on-chain before executing, and proves it on reveal. Tameion Agents Hackathon.",
     type: "website",
   },
 };

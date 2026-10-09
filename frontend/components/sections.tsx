@@ -17,7 +17,9 @@ export function Hero() {
       <div className="hero-grid" />
       <HeroTilt className="hero-tilt">
         <ParallaxLayer speed={0.3} fade className="hero-content">
+          <div className="hero-eyebrow">TAMEION AGENTS HACKATHON</div>
           <h1 className="hero-wordmark">ATHENA</h1>
+          <div className="hero-sub">Autonomous Business Treasury on Arc</div>
         </ParallaxLayer>
       </HeroTilt>
       <div className="scroll-cue" />
@@ -29,12 +31,12 @@ export function Statement() {
   return (
     <section className="section statement" id="about">
       <Reveal as="h2">
-        Athena seals its routing prediction on-chain before it spends a cent,{" "}
-        <span className="dim">and lets the outcome decide</span> who gets paid
+        Athena seals every treasury decision on-chain before a cent moves,{" "}
+        <span className="dim">and freezes itself</span> if it ever fails to prove what it did
       </Reveal>
       <Reveal>
-        <a className="btn-ghost" href="#">
-          <span>VIEW ON ARCSCAN</span>
+        <a className="btn-ghost" href="https://explorer.testnet.arc.io" target="_blank" rel="noopener noreferrer">
+          <span>VIEW ON ARC EXPLORER</span>
         </a>
       </Reveal>
     </section>
@@ -52,17 +54,20 @@ export function Future() {
         height={120}
       />
       <Reveal as="h2">
-        Sealed Before
+        Committed
         <br />
-        It Runs
+        Before It Acts
       </Reveal>
       <Reveal as="p">
-        Before a single call streams, Athena hashes its routing decision — chosen
-        provider, predicted quality, predicted latency, confidence and commits
-        it to a smart contract on Arc, posting a USDC bond against that
-        prediction. An MCP quality monitor scores every call as it lands. If the
-        stream matches what was predicted, the bond returns. If it doesn&apos;t,
-        it slashes to the client automatically.
+        Before any payment leaves the treasury, Athena hashes its full
+        decision — the balance it read, the forecast it ran, the rule it
+        applied, the invoice it matched, and the amount it intends to send —
+        and commits that hash to the{" "}
+        <span style={{ color: "var(--gold-glow)" }}>AthenaTreasury</span>{" "}
+        contract on Arc. The contract then executes the payment. Afterwards
+        Athena reveals the full record and the contract verifies the hash
+        matches. An agent that never reveals gets frozen — it cannot commit
+        or pay again until its arrears are cleared.
       </Reveal>
     </section>
   );
@@ -82,20 +87,22 @@ export function Pods() {
       </Reveal>
       <Reveal className="pods-panel">
         <div>
-          <div className="top">LIVE ON ARC TESTNET</div>
+          <div className="top">TAMEION · ANCIENT GREEK FOR TREASURY</div>
           <div className="year mono">2026</div>
         </div>
         <div>
           <h3>
-            Start a
+            The Treasury
             <br />
-            Stream
+            Agent
           </h3>
           <p className="desc">
-            Connect your wallet, post a bond, and watch Athena commit a sealed
-            routing decision before a single USDC nanopayment streams to the
-            chosen provider. No committee decides the outcome the prediction
-            does.
+            Athena holds USDC and EURC in a smart contract, reads invoices,
+            runs a 30-day cash-flow forecast, decides when to pay, and
+            executes — all without a human key. Every decision is sealed on
+            Arc before execution and verified on reveal. Escalations that
+            exceed the agent&apos;s authority surface to a human approver via
+            wallet signature.
           </p>
         </div>
       </Reveal>
@@ -112,15 +119,15 @@ export function Solar() {
       <div className="orbit o3" />
       <div className="orbit o4" />
       <div className="solar-sun">
-        <Image src={`${IMG}/lepton.jpg`} alt="Lepton" fill sizes="224px" style={{ objectFit: "cover" }} />
+        <Image src={`${IMG}/tameion-seal.jpg`} alt="Tameion seal" fill sizes="224px" style={{ objectFit: "cover", borderRadius: "50%" }} />
       </div>
       <div className="solar-content">
-        <Reveal className="eyebrow">Settled On Arc</Reveal>
-        <Reveal as="h2">50+ On-Chain Settlements Per Run</Reveal>
+        <Reveal className="eyebrow">Live on Arc Testnet · Tameion Hackathon</Reveal>
+        <Reveal as="h2">Every Decision Sealed On-Chain</Reveal>
         <Reveal className="sub">
-          Every commit, bond, reveal, and settlement
+          Commit hash · Execute payment · Reveal record
           <br />
-          logged live on Arcscan
+          All logged and verifiable on Arc
         </Reveal>
       </div>
     </section>
@@ -128,11 +135,11 @@ export function Solar() {
 }
 
 const DIVISIONS = [
-  { n: "D—001", name: "WALLETS", src: "63b814185c1004322b3cafe3_hive_20__20logo.svg" },
-  { n: "D—002", name: "GATEWAY", src: "63b814185c100416813cafe7_forge_20__20logo.svg" },
-  { n: "D—003", name: "X402", src: "63b814185c10045c303cafdf_scout_20__20logo.svg" },
-  { n: "D—004", name: "MARKETPLACE", src: "63b814185c10046cb73cafeb_oath_20__20logo.svg" },
-  { n: "D—005", name: "CCTP", src: "63b814185c10045ddf3cafdd_labs_20__20logo.svg" },
+  { n: "D—001", name: "WALLETS", label: "DCW + Agent Wallets", src: "63b814185c1004322b3cafe3_hive_20__20logo.svg" },
+  { n: "D—002", name: "GATEWAY", label: "Unified Balance", src: "63b814185c100416813cafe7_forge_20__20logo.svg" },
+  { n: "D—003", name: "CCTP V2", label: "Cross-Chain", src: "63b814185c10045c303cafdf_scout_20__20logo.svg" },
+  { n: "D—004", name: "EARN KIT", label: "Idle Yield", src: "63b814185c10046cb73cafeb_oath_20__20logo.svg" },
+  { n: "D—005", name: "COMPLIANCE", label: "Payee Screening", src: "63b814185c10045ddf3cafdd_labs_20__20logo.svg" },
 ];
 
 export function Divisions() {
@@ -142,7 +149,7 @@ export function Divisions() {
         <div className="track" style={{ fontSize: "clamp(1.6rem,4vw,3.4rem)", color: "var(--muted)" }}>
           {Array.from({ length: 4 }).map((_, i) => (
             <span key={i}>
-              COMMIT <span>*</span> STREAM <span>*</span> SETTLE <span>*</span>{" "}
+              COMMIT <span>*</span> EXECUTE <span>*</span> REVEAL <span>*</span>{" "}
             </span>
           ))}
         </div>
@@ -154,21 +161,24 @@ export function Divisions() {
             <div className="dnum">{d.n}</div>
             <Image src={`${IMG}/${d.src}`} alt={d.name} width={40} height={40} />
             <div className="dname">{d.name}</div>
+            <div className="dlabel">{d.label}</div>
           </div>
         ))}
       </Reveal>
 
       <div className="div-intro">
-        <Reveal as="h3">Athena: A Trust-Minimized Agent Broker on Arc</Reveal>
+        <Reveal as="h3">Athena: Autonomous Business Treasury on Arc</Reveal>
         <div>
           <Reveal as="p">
-            Every stream relies on five Circle building blocks working together
-            policy-controlled agent wallets, Gateway nanopayments, x402 payment
-            triggers, marketplace discovery, and CCTP for cross-chain payouts.
+            The treasury runs on five Circle building blocks: Developer-Controlled
+            Wallets with spending policies, Gateway unified balance and
+            consolidation, CCTP V2 for cross-chain vendor payments, Earn Kit for
+            yield on idle USDC, and the Compliance Engine to screen every payee
+            before they are ever activated.
           </Reveal>
           <Reveal>
-            <a className="btn-ghost" href="#">
-              <span>READ THE PROTOCOL</span>
+            <a className="btn-ghost" href="https://tameion.thecanteenapp.com" target="_blank" rel="noopener noreferrer">
+              <span>TAMEION HACKATHON</span>
             </a>
           </Reveal>
         </div>
@@ -180,34 +190,34 @@ export function Divisions() {
 const CHAPTERS = [
   {
     idx: "CHAPTER 01",
-    title: ["The Payment"],
+    title: ["The", "Obligation"],
     body: [
-      "A client pays a single x402 nanopayment to Athena's Gateway-protected endpoint — one signature, one session.",
-      "That single payment is all it takes to trigger the entire stream. Nothing else is manual from here.",
+      "An invoice arrives — from email, upload, or API. Athena extracts the fields with an LLM, then validates them strictly: decimals, duplicates, three-way match against the purchase order and receipt.",
+      "The model suggests. Deterministic code decides. A mismatched amount or an unknown payee becomes a hold, not a payment.",
     ],
   },
   {
     idx: "CHAPTER 02",
     title: ["The", "Commitment"],
     body: [
-      "Athena reads the Circle Agent Marketplace and evaluates providers by ERC-8004 reputation, price, and endpoint count.",
-      "It forms a structured decision chosen provider, predicted quality, predicted latency, confidence — hashes it, commits the hash on-chain, and posts a USDC bond against its own prediction.",
+      "Athena reads the treasury balance, runs a 30-day cash-flow forecast, and applies policy math: discount APRs, liquidity floor, surplus, priorities.",
+      "It hashes the full decision record — what it saw, what it forecast, what rule it applied, what it intends to pay — and commits that hash to AthenaTreasury on Arc before any money moves.",
     ],
   },
   {
     idx: "CHAPTER 03",
-    title: ["The", "Stream"],
+    title: ["The", "Execution"],
     body: [
-      "Nanopayments flow to the chosen provider via x402 as each result arrives.",
-      "An MCP quality monitor scores every call for quality and latency, live. Fall short too many times in a row, and the stream stops.",
+      "The contract executes the payment. It re-checks every rule: budget, payee cap, payee activation cooldown, operating floor. A payment that would violate any rule is escalated to the human approver instead.",
+      "Cross-chain vendors receive USDC via CCTP V2. Euro invoices are settled in EURC after an App Kit swap.",
     ],
   },
   {
     idx: "FOUNDATION",
-    title: ["The", "Settlement"],
+    title: ["The", "Reveal"],
     body: [
-      "When the stream ends, Athena reveals the sealed decision. The contract checks the hash matches — no rewriting history after the fact.",
-      "If the prediction held, the bond releases back to Athena and reputation updates on ERC-8004. If it didn't, the bond slashes to the client automatically. No committee, no dispute, no delay.",
+      "After execution, Athena publishes the full decision record on-chain. The contract recomputes the SHA-256 hash and refuses a record that does not match what was committed.",
+      "An agent that fails to reveal on time is frozen — it cannot commit new decisions or move money until every overdue record is published. The chain is the permanent, tamper-evident audit trail.",
     ],
   },
 ];
@@ -245,15 +255,15 @@ export function Footer() {
       <div className="foot-main">
         <div className="foot-logo foot-logo-text">ATHENA</div>
         <div className="foot-links">
-          <a href="#">GitHub</a>
-          <a href="#">Twitter</a>
-          <a href="#">Arcscan</a>
-          <a href="#">Docs</a>
+          <a href="https://github.com" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://explorer.testnet.arc.io" target="_blank" rel="noopener noreferrer">Arc Explorer</a>
+          <a href="https://tameion.thecanteenapp.com" target="_blank" rel="noopener noreferrer">Tameion</a>
+          <a href="/dashboard">Dashboard</a>
         </div>
       </div>
       <div className="foot-bottom">
-        <span>© 2026 ATHENA — TRUST-MINIMIZED AGENT BROKER ON ARC</span>
-        <a href="#">Privacy Policy</a>
+        <span>© 2026 ATHENA — AUTONOMOUS BUSINESS TREASURY ON ARC · TAMEION HACKATHON</span>
+        <a href="https://tameion.thecanteenapp.com" target="_blank" rel="noopener noreferrer">Canteen × Circle × Arc</a>
       </div>
     </footer>
   );

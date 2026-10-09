@@ -208,23 +208,23 @@ export default function Nav() {
         ) : (
           <>
             <Link className="nav-item nav-cta" href="/dashboard">
-              <span className="label">DASHBOARD</span>
+              <span className="label">TREASURY</span>
               <span className="num">001</span>
             </Link>
-            <Link className="nav-item nav-cta" href="/agents">
-              <span className="label">AGENT ROSTER</span>
+            <Link className="nav-item nav-cta" href="/obligations">
+              <span className="label">OBLIGATIONS</span>
               <span className="num">002</span>
             </Link>
-            <Link className="nav-item nav-cta" href="/live">
-              <span className="label">LIVE STREAM VIEW</span>
+            <Link className="nav-item nav-cta" href="/decisions">
+              <span className="label">AUDIT TRAIL</span>
               <span className="num">003</span>
             </Link>
-            <Link className="nav-item nav-cta" href="/new-stream">
-              <span className="label">NEW STREAM</span>
+            <Link className="nav-item nav-cta" href="/approvals">
+              <span className="label">APPROVALS</span>
               <span className="num">004</span>
             </Link>
-            <Link className="nav-item nav-cta" href="/evidence">
-              <span className="label">EVIDENCE</span>
+            <Link className="nav-item nav-cta" href="/metrics">
+              <span className="label">METRICS</span>
               <span className="num">005</span>
             </Link>
             <button type="button" className="nav-item nav-cta" onClick={handleWalletClick}>
