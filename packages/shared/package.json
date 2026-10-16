@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "canonicalize": "2.1.0",
-    "viem": "2.21.54"
+    "viem": "2.57.7"
   },
   "devDependencies": {
     "@types/node": "22.10.2",

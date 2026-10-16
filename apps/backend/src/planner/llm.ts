@@ -4,7 +4,8 @@
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { log } from "../log.js";
-import { callTool, type LlmCreds } from "../llm/tool.js";
+import type { LlmCreds } from "../llm/tool.js";
+import { guardedCall } from "../llm/budget.js";
 import type { ObligationOptions } from "../policy/options.js";
 import type { ProposedPlan } from "./validate.js";
 
@@ -62,7 +63,7 @@ export async function planWithLlm(args: {
   }\n\nReturn your plan with the propose_plan tool.`;
 
   try {
-    const input = await callTool(args.llm, {
+    const input = await guardedCall("plan", args.llm, {
       system: SYSTEM, text: user, toolName: "propose_plan", toolDescription: "Propose this cycle's treasury plan.",
       schema: zodToJsonSchema(PlanSchema) as Record<string, unknown>, maxTokens: 4000, timeoutMs: args.timeoutMs ?? 30_000,
     });

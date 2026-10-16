@@ -1,7 +1,7 @@
 // Shared integration harness: local anvil (chain id 5042002) + real contract + embedded Postgres + env wiring.
 // Backend modules read env at import time, so tests must import them via `harness.be` AFTER start().
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync , readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -95,7 +95,7 @@ export async function startHarness(ports: { anvil: number; pg: number }): Promis
     OPERATOR_PK: KEY.operator, ANTHROPIC_API_KEY: "unused", PLANNER_MODEL: "none", EXTRACTOR_MODEL: "unused",
   });
   const db = await import("../../src/db.js");
-  const sql = ["0001_init.sql", "0002_security.sql"].map((f) => readFileSync(join(migrationsDir, f), "utf8")).join("\n")
+  const sql = readdirSync(migrationsDir).filter((n) => n.endsWith(".sql")).sort().map((f) => readFileSync(join(migrationsDir, f), "utf8")).join("\n")
     .replace(/insert into storage\.buckets[^;]*;/i, ""); // Supabase-only
   await db.pool.query(sql);
   const entityId = (await db.q<{ id: string }>("insert into entities(name, network, treasury_address) values ('house','testnet',$1) returning id", [treasury]))[0]!.id;

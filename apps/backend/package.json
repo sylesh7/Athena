@@ -10,7 +10,8 @@
     "api": "tsx --env-file=.env.local src/api.ts",
     "keeper": "tsx --env-file=.env.local src/keeper.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "mcp": "tsx src/mcp/server.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.33.1",
@@ -23,9 +24,19 @@
     "pdf-parse": "1.1.1",
     "pg": "8.13.1",
     "pino": "9.6.0",
-    "viem": "2.21.54",
-    "zod": "3.24.1",
-    "zod-to-json-schema": "3.24.1"
+    "viem": "2.57.7",
+    "zod": "3.25.76",
+    "zod-to-json-schema": "3.24.1",
+    "@circle-fin/earn-kit": "1.9.0",
+    "@circle-fin/adapter-viem-v2": "1.19.1",
+    "@circle-fin/app-kit": "1.17.0",
+    "@circle-fin/adapter-circle-wallets": "1.8.2",
+    "@circle-fin/x402-batching": "3.5.0",
+    "@circle-fin/developer-controlled-wallets": "10.8.1",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "pdfkit": "0.15.2",
+    "@x402/core": "^2.3.0",
+    "@x402/evm": "^2.3.0"
   },
   "devDependencies": {
     "@types/cors": "2.8.17",
@@ -38,6 +49,7 @@
     "embedded-postgres": "18.4.0-beta.17",
     "tsx": "4.19.2",
     "typescript": "5.7.2",
-    "vitest": "2.1.8"
+    "vitest": "2.1.8",
+    "@types/pdfkit": "0.13.9"
   }
 }

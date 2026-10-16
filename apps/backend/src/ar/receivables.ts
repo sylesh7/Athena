@@ -9,8 +9,8 @@ import { Reverted, sendTreasury } from "../chain/tx.js";
 import { screen } from "../payees/screening.js";
 
 export async function registerDraftReceivables(circleApiKey: string | undefined): Promise<number> {
-  const drafts = await q<{ id: string; receivable_id: string; token: "USDC" | "EURC"; amount_due: string; customer_id: string; wallet: string | null; risk_tier: string }>(
-    `select r.id, r.receivable_id, r.token, r.amount_due::text, r.customer_id, c.wallet, c.risk_tier
+  const drafts = await q<{ id: string; receivable_id: string; token: "USDC" | "EURC"; amount_due: string; customer_id: string; x402_enabled: boolean; wallet: string | null; risk_tier: string }>(
+    `select r.id, r.receivable_id, r.token, r.amount_due::text, r.customer_id, r.x402_enabled, c.wallet, c.risk_tier
      from receivables r join customers c on c.id = r.customer_id where r.status = 'draft' order by r.issued_at limit 20`);
   let n = 0;
   for (const r of drafts) {
@@ -22,9 +22,10 @@ export async function registerDraftReceivables(circleApiKey: string | undefined)
         if (s.tier === "blocked") { await q("update receivables set status = 'written_off' where id = $1", [r.id]); await notify("customer.blocked", { receivableId: r.receivable_id }); continue; }
       }
       const token = net(commonCfg.NETWORK).tokens[r.token] as `0x${string}`;
-      // customer = 0 when the payer may be someone else (e.g. the collections wallet for x402 payments).
+      // customer = 0 when the payer may be someone else: x402 receivables are settled by the collections wallet, so they can't be
+      // restricted to the customer's own wallet. Over-payment is still refused by the contract either way.
       const { hash } = await sendTreasury(operatorWallet, "registerReceivable",
-        [r.receivable_id, token, BigInt(r.amount_due), (r.wallet ?? "0x0000000000000000000000000000000000000000") as `0x${string}`], "registerReceivable");
+        [r.receivable_id, token, BigInt(r.amount_due), (r.x402_enabled || !r.wallet ? "0x0000000000000000000000000000000000000000" : r.wallet) as `0x${string}`], "registerReceivable");
       await q("update receivables set status = 'open', register_tx = $2 where id = $1", [r.id, hash]);
       n++;
     } catch (e) {

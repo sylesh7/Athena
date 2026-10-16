@@ -5,7 +5,8 @@ import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { q, sb } from "../db.js";
 import { log } from "../log.js";
-import { callTool, type LlmCreds } from "../llm/tool.js";
+import type { LlmCreds } from "../llm/tool.js";
+import { guardedCall } from "../llm/budget.js";
 
 export const ExtractedInvoice = z.object({
   vendorName: z.string(),
@@ -37,7 +38,7 @@ Copy amounts exactly as printed, including separators. Do not compute totals.
 If a field is not printed, use null.`;
 
 export async function extract(args: { llm: LlmCreds; rawText: string | null; pdfBase64?: string }): Promise<ExtractedInvoice> {
-  const input = await callTool(args.llm, {
+  const input = await guardedCall("extract", args.llm, {
     system: SYSTEM,
     ...(args.rawText ? { text: `<document>
 ${args.rawText}

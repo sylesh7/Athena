@@ -39,13 +39,26 @@ const WorkerOnly = z.object({
   LLM_PROVIDER: z.enum(["anthropic", "openai"]).optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
+  // Hard spend caps (USD) across ALL LLM calls, enforced from the llm_usage table before every call.
+  LLM_BUDGET_USD: z.coerce.number().positive().default(4),
+  LLM_DAILY_BUDGET_USD: z.coerce.number().positive().default(0.5),
+  // Optional override if you use a model not in llm/pricing.ts: USD per 1M tokens.
+  LLM_PRICE_IN_PER_M: z.coerce.number().positive().optional(),
+  LLM_PRICE_OUT_PER_M: z.coerce.number().positive().optional(),
   PLANNER_MODEL: z.string().default("none"),
   EXTRACTOR_MODEL: z.string().optional(),
   FRONTEND_URL: z.string().url().default("http://localhost:3000"),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_CHAT_ID: z.string().optional(),
+  // ERC-8004 token id of Athena's OPERATOR agent (from scripts/register-agent.ts); enables the daily reputation post (testnet only).
+  ERC8004_AGENT_ID: z.string().regex(/^[0-9]+$/).optional(),
+  // Comma-separated x402-protected URLs the agent buys hourly with the spend wallet (e.g. its own EUR/USD data service).
+  SERVICE_URLS: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
+  RESEND_API_URL: z.string().url().optional(),
   FROM_EMAIL: z.string().optional(),
+  FROM_NAME: z.string().default("Athena Treasury"),
+  PUBLIC_BASE_URL: z.string().url().optional(),
   OPERATOR_ENABLED: bool.default("true"),
   DRY_RUN: bool.default("false"),
   SKIP_REVEAL: bool.default("false"), // scenario S13 only
@@ -65,6 +78,8 @@ const ApiOnly = z.object({
   CORS_ORIGIN: z.string(),
   PUBLIC_BASE_URL: z.string().url(),
   FRONTEND_URL: z.string().url().default("http://localhost:3000"),
+  // PUBLIC address of the collections wallet (the x402 seller). The API never holds its key.
+  COLLECTIONS_ADDRESS: addr.optional(),
 });
 
 // Blank values (KEY=) in .env.local mean "not set", not "set to an empty string" — otherwise optional address/key

@@ -5,9 +5,30 @@ import { net } from "@athena/shared/addresses";
 import { pub, treasuryAbi, TREASURY } from "../chain/readClient.js";
 import { commonCfg } from "../config.js";
 import { q, notify } from "../db.js";
+import { updatedAvgDaysLate } from "../ar/dunning.js";
 import { log } from "../log.js";
 
-const CHUNK = 2_000n;
+// Catch-up chunking is ADAPTIVE: start large (a treasury has few events, so big ranges are cheap when the RPC allows them), halve on
+// "range too large" errors, and back off + retry on rate limits. The public Arc RPC rate-limits eth_getLogs aggressively (observed
+// live while catching up ~1M blocks), so catch-up is also paced. A dedicated/Canteen RPC makes this a non-issue.
+const MAX_CHUNK = BigInt(process.env.INDEXER_CHUNK ?? "50000"); // blocks per getLogs range at most (default 50,000)
+const MIN_CHUNK = MAX_CHUNK < 500n ? MAX_CHUNK : 500n;
+// Once the RPC rejects a range size we remember it for the life of the process, so catch-up does not keep probing larger sizes.
+let learnedCeiling = MAX_CHUNK;
+const sleepMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const isRateLimit = (e: unknown) => /rate limit|429|-32005|too many requests/i.test(String((e as Error)?.message ?? e) + String((e as { code?: unknown })?.code ?? ""));
+const isRangeTooLarge = (e: unknown) => /range|too many results|exceed|10000|query returned more than/i.test(String((e as Error)?.message ?? e));
+
+async function withBackoff<T>(fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try { return await fn(); } catch (e) {
+      if (!isRateLimit(e) || attempt >= 8) throw e;
+      const wait = Math.min(30_000, 1_000 * 2 ** attempt);
+      log.warn({ attempt, wait }, "RPC rate limit — backing off");
+      await sleepMs(wait);
+    }
+  }
+}
 const transferEvent = parseAbi(["event Transfer(address indexed from, address indexed to, uint256 value)"])[0];
 
 type Ev = { eventName: string; args: Record<string, any>; blockNumber: bigint; transactionHash: `0x${string}`; logIndex: number };
@@ -33,20 +54,33 @@ export async function indexOnce(): Promise<{ from: bigint; to: bigint; events: n
   if (from > head) return { from, to: head, events: 0 };
 
   const tokens = net(commonCfg.NETWORK).tokens;
-  for (let start = from; start <= head; start += CHUNK) {
-    const end = start + CHUNK - 1n > head ? head : start + CHUNK - 1n;
-    const logs = await pub.getLogs({ address: TREASURY, fromBlock: start, toBlock: end });
-    const events = parseEventLogs({ abi: treasuryAbi, logs: logs as Log[] }) as unknown as Ev[];
-
-    // ERC-20 transfers INTO the treasury, filtered by emitting token contract (Arc also emits EIP-7708
-    // logs for native-value transfers; filtering by token address avoids double counting).
-    const tokenLogs = await pub.getLogs({
-      address: [tokens.USDC as `0x${string}`, tokens.EURC as `0x${string}`],
-      event: transferEvent,
-      args: { to: TREASURY },
-      fromBlock: start,
-      toBlock: end,
-    });
+  let chunk = learnedCeiling;
+  for (let start = from; start <= head; ) {
+    const end = start + chunk - 1n > head ? head : start + chunk - 1n;
+    let logs: Log[];
+    let tokenLogs: unknown[];
+    try {
+      logs = (await withBackoff(() => pub.getLogs({ address: TREASURY, fromBlock: start, toBlock: end }))) as Log[];
+      // ERC-20 transfers INTO the treasury, filtered by emitting token contract (Arc also emits EIP-7708
+      // logs for native-value transfers; filtering by token address avoids double counting).
+      tokenLogs = (await withBackoff(() => pub.getLogs({
+        address: [tokens.USDC as `0x${string}`, tokens.EURC as `0x${string}`],
+        event: transferEvent,
+        args: { to: TREASURY },
+        fromBlock: start,
+        toBlock: end,
+      }))) as unknown[];
+    } catch (e) {
+      if (isRangeTooLarge(e) && chunk > MIN_CHUNK) {
+        chunk = chunk / 2n > MIN_CHUNK ? chunk / 2n : MIN_CHUNK;
+        learnedCeiling = chunk;
+        log.warn({ chunk: chunk.toString() }, "RPC rejected the range — shrinking chunk");
+        continue;
+      }
+      throw e;
+    }
+    if (end - start >= 1_000n && head - end > 1_000n) await sleepMs(250); // pace catch-up
+    const events = parseEventLogs({ abi: treasuryAbi, logs }) as unknown as Ev[];
 
     for (const e of events) {
       await q(
@@ -59,6 +93,9 @@ export async function indexOnce(): Promise<{ from: bigint; to: bigint; events: n
     await reconcileInflows(tokenLogs as any[], events);
     await setLastIndexed(end);
     total += events.length;
+    if (head - from > 5_000n) log.info({ from: start.toString(), to: end.toString(), head: head.toString(), chunk: chunk.toString(), events: events.length }, "indexer catch-up");
+    start = end + 1n; // advance — without this the loop re-indexes the same range forever
+    if (chunk < learnedCeiling) chunk = chunk * 2n > learnedCeiling ? learnedCeiling : chunk * 2n; // recover only up to what the RPC has accepted
   }
   return { from, to: head, events: total };
 }
@@ -186,6 +223,14 @@ async function project(e: Ev): Promise<void> {
          where receivable_id = $1`,
         [a.receivableId, a.totalPaid],
       );
+      // A fully-paid receivable teaches the forecast: update the customer's payment history (running average lateness).
+      const paid = (await q<{ due_date: string; customer_id: string; status: string; avg: string; paid_count: number }>(
+        `select r.due_date::text, r.customer_id, r.status, c.avg_days_late::text as avg, c.paid_count
+         from receivables r join customers c on c.id = r.customer_id where r.receivable_id = $1`, [a.receivableId]))[0];
+      if (paid?.status === "paid") {
+        const next = updatedAvgDaysLate({ avg: Number(paid.avg), paidCount: paid.paid_count, paidOn: new Date().toISOString().slice(0, 10), dueDate: paid.due_date });
+        await q("update customers set paid_count = paid_count + 1, avg_days_late = $2 where id = $1", [paid.customer_id, next]);
+      }
       await notify("payment.in", { receivableId: a.receivableId, amount: String(a.amount) });
       break;
     }
@@ -217,7 +262,7 @@ async function reconcileInflows(tokenLogs: any[], events: Ev[]): Promise<void> {
       `update decisions set follow_up = jsonb_set(follow_up, '{status}', '"done"')
        where decision_id = (
          select decision_id from decisions
-         where kind = 'CONSOLIDATE' and coalesce(follow_up->>'status','') = 'pending'
+         where kind = 'CONSOLIDATE' and coalesce(follow_up->>'status','') in ('pending','minting')
            and (follow_up->>'amount')::numeric >= $1::numeric
            and created_at > now() - interval '2 hours'
          order by created_at limit 1)

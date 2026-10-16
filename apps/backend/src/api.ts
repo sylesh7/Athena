@@ -14,9 +14,10 @@ import { pub, readDecision, TREASURY, treasuryAbi } from "./chain/readClient.js"
 import { SignatureError, verifySignedAction, type SignedAction } from "./api/signed.js";
 import { net } from "@athena/shared/addresses";
 import multer from "multer";
+import { createGatewayMiddleware } from "@circle-fin/x402-batching/server";
 import { isAddress } from "viem";
 import { payeeId as makePayeeId, receivableId as makeReceivableId } from "@athena/shared/ids";
-import { parseAmount, AmountError } from "@athena/shared/money";
+import { parseAmount, AmountError, formatAmount } from "@athena/shared/money";
 import { intakeDocument, IntakeError } from "./ingest/intake.js";
 
 const api = loadApiCfg();
@@ -359,7 +360,11 @@ app.post("/admin/cycle/dry-run", adminOnly, wrap(async (_req, res) => {
 
 // ── SSE ──────────────────────────────────────────────────────────────────────────────────────
 app.get("/events/stream", async (req, res) => {
-  res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
+  res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive", "x-accel-buffering": "no" });
+  // Flush the headers + a first comment NOW: Node holds headers until the first write, so without this the client's
+  // `EventSource.onopen` (and fetch()) would not resolve until the first event or the 15 s keep-alive ping.
+  res.flushHeaders();
+  res.write(": connected\n\n");
   const client = await pool.connect();
   await client.query("LISTEN athena_events");
   const onNote = (m: pg.Notification) => {
@@ -376,5 +381,52 @@ app.get("/events/stream", async (req, res) => {
     try { await client.query("UNLISTEN athena_events"); } finally { client.release(); }
   });
 });
+
+// ── x402 agent-payable receivable link (Phase 35.2) ──────────────────────────────────────────
+// Unpaid requests get a correct HTTP 402 with the exact outstanding amount; a verified payment credits the collections
+// wallet's Gateway balance and queues a receipt that the WORKER settles on-chain via payReceivable(). This route never
+// moves treasury money, and the API holds no key: only the collections wallet's PUBLIC address (the x402 seller).
+const gatewayApi = net(commonCfg.NETWORK).gateway.api;
+if (api.COLLECTIONS_ADDRESS && gatewayApi) {
+  const gateway = createGatewayMiddleware({
+    sellerAddress: api.COLLECTIONS_ADDRESS,
+    // MUST be explicit: the package default is Circle's MAINNET facilitator, which has never heard of Arc testnet.
+    facilitatorUrl: gatewayApi,
+    networks: net(commonCfg.NETWORK).gateway.x402Network,
+  });
+  app.get(
+    "/pay/:receivableId",
+    wrap(async (req, res, next) => {
+      const r = (await q<{ amount_due: string; amount_paid: string; status: string; x402_enabled: boolean }>(
+        "select amount_due::text, amount_paid::text, status, x402_enabled from receivables where receivable_id = $1", [req.params.receivableId]))[0];
+      if (!r || r.status === "paid") return bad(res, 404, "not_found", "unknown or already paid");
+      if (!r.x402_enabled) return bad(res, 403, "x402_disabled", "this receivable does not accept x402 payment");
+      if (!["open", "partial"].includes(r.status)) return bad(res, 409, "not_payable", `receivable is ${r.status}`);
+      const outstanding = BigInt(r.amount_due) - BigInt(r.amount_paid);
+      return gateway.require(`$${formatAmount(outstanding)}`)(req as never, res as never, next);
+    }),
+    wrap(async (req, res) => {
+      const p = (req as unknown as { payment?: { verified: boolean; payer: string; amount: string } }).payment;
+      if (!p?.verified) return bad(res, 402, "unpaid", "payment not verified");
+      // Idempotency: a retried request with the same payment must not queue a second settlement.
+      await q("insert into x402_receipts(receivable_id, amount, payer) values ($1,$2,$3)", [req.params.receivableId, p.amount, p.payer]);
+      res.json({ status: "received", receivableId: req.params.receivableId, note: "settles on-chain shortly; the receivable is marked paid when ReceivablePaid is indexed" });
+    }),
+  );
+  // The house data service Athena itself buys with its spend wallet (Phase 36.2): a EUR/USD reference rate at $0.001 per call.
+  // Real nanopayments on Arc; revenue lands in the collections wallet's Gateway balance like any x402 sale.
+  app.get(
+    "/services/eurusd",
+    gateway.require("$0.001") as never,
+    wrap(async (_req, res) => {
+      const { referencePrices } = await import("./fx/swap.js");
+      const p = await referencePrices();
+      const rate = Number(p.eurc) / Number(p.usdc); // USD per 1 EUR (EURC ≈ EUR)
+      res.json({ pair: "EUR/USD", rate: Number(rate.toFixed(6)), source: "Circle App Kit token rates (Arc)", asOf: new Date().toISOString() });
+    }),
+  );
+} else {
+  log.info("x402 pay link disabled (set COLLECTIONS_ADDRESS and use a network with a verified Gateway API)");
+}
 
 app.listen(api.API_PORT, () => log.info({ port: api.API_PORT, treasury: TREASURY }, "Athena API listening"));

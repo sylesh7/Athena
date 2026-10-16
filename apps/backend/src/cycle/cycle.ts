@@ -26,6 +26,18 @@ import { processExtractionQueue } from "../ingest/extract.js";
 import { processValidationQueue } from "../validate/pipeline.js";
 import { processAddressChanges, processPayeeDrafts, rescreenDue } from "../payees/onboarding.js";
 import { registerDraftReceivables } from "../ar/receivables.js";
+import { runCollections } from "../ar/collections.js";
+import { settleX402Receipts } from "../ar/settle.js";
+import { planTreasuryDecisions } from "./treasury.js";
+import { runYieldFollowUps, refreshPositions, exploreVaults } from "../yield/earn.js";
+import { referencePrices, runFxFollowUps, type FxCfg } from "../fx/swap.js";
+import { consolidatable, gatewayAvailable, gatewaySnapshot, runGatewayFollowUps, runSpendFollowUps } from "../gateway/gateway.js";
+import { runServicePurchases } from "../services/purchases.js";
+import { retryPendingMints } from "../gateway/safeWithdraw.js";
+import { recomputeScorecards } from "../reputation/recompute.js";
+import { postDailyFeedback } from "../reputation/erc8004.js";
+import { computeMetrics } from "../metrics/metrics.js";
+import type { RawVault } from "../yield/select.js";
 import { expireEscalations, notifyPendingEscalations } from "../escalations/notifier.js";
 import { relayPending } from "../cctp/relayer.js";
 import { snapshotMetrics } from "../metrics/metrics.js";
@@ -46,7 +58,7 @@ interface ObRow {
 const today = () => new Date().toISOString().slice(0, 10);
 const dateStr = (d: Date | string | null) => (d === null ? null : typeof d === "string" ? d.slice(0, 10) : d.toISOString().slice(0, 10));
 
-export async function runCycle(w: WorkerCfg, trigger: string, opts: { dryRun?: boolean } = {}) {
+export async function runCycle(w: WorkerCfg, trigger: string, opts: { dryRun?: boolean; vaults?: () => Promise<RawVault[]>; fxPrices?: () => Promise<{ usdc: bigint; eurc: bigint }> } = {}) {
   if (!w.OPERATOR_ENABLED) return { status: "skipped" as const, reason: "operator disabled" };
   const dryRun = opts.dryRun ?? w.DRY_RUN;
 
@@ -98,7 +110,8 @@ export async function runCycle(w: WorkerCfg, trigger: string, opts: { dryRun?: b
       const effectiveDry = dryRun || gas < MIN_GAS_NATIVE;
       if (!dryRun && effectiveDry) log.error({ gas: gas.toString() }, "P2: operator gas below floor — running dry");
 
-      const snapRes = await step("snapshot", () => takeSnapshot());
+      const gatewayEntries = await step("gateway", () => gatewaySnapshot({ collections: w.COLLECTIONS_PK, spend: w.SPEND_PK }));
+      const snapRes = await step("snapshot", () => takeSnapshot({ gateway: gatewayEntries }));
       const snap = snapRes.snapshot;
       await q("update cycles set snapshot = $2, snapshot_hash = $3 where id = $1", [cycleId, JSON.stringify(snap), snapRes.hash]);
       if (snap.treasury.paused) return await finish("skipped", "treasury paused");
@@ -137,17 +150,29 @@ export async function runCycle(w: WorkerCfg, trigger: string, opts: { dryRun?: b
       // Plan: LLM if available, otherwise (or on failure) the deterministic default.
       // PLANNER_MODEL=none runs the deterministic default plan only (offline/dev/tests).
       const plannerLlm = resolveLlm(w, w.PLANNER_MODEL);
-      const llm = options.length === 0 || !plannerLlm ? null : await step("plan", () => planWithLlm({
-        llm: plannerLlm,
-        facts: {
-          cycleId, block: snap.block, today: day, spendableUsdc: d.spendableUsdc.toString(),
-          minBalanceStress: fc.minBalanceStress.amount, firstShortfall: fc.shortfalls[0]?.date ?? null,
-          bestVaultApyBps: String(bestVaultApy), options, criticality, defaultOrder: order,
-          vendorNotes: Object.fromEntries(obRows.filter((r) => r.vendor_notes).map((r) => [r.obligation_id, r.vendor_notes!])),
-        },
-      }));
+      // Throttle: the model is only consulted when the facts it would see have CHANGED (or the day rolled over).
+      // Identical facts reuse the last LLM plan, so an idle treasury makes zero LLM calls no matter how often cycles run.
+      const factsHash = canonicalRecord({ day, options, criticality, order, spendable: d.spendableUsdc.toString(), bestVaultApy }).sha256;
+      let llm: Awaited<ReturnType<typeof planWithLlm>> = null;
+      let reusedPlan = false;
+      if (options.length > 0 && plannerLlm) {
+        const prev = (await q<{ plan: any }>(
+          "select plan from cycles where plan->>'factsHash' = $1 and plan->>'mode' = 'llm' and status = 'done' order by started_at desc limit 1", [factsHash]))[0];
+        if (prev?.plan?.plan) { llm = { plan: prev.plan.plan, humanNotes: [] }; reusedPlan = true; }
+        else {
+          llm = await step("plan", () => planWithLlm({
+            llm: plannerLlm,
+            facts: {
+              cycleId, block: snap.block, today: day, spendableUsdc: d.spendableUsdc.toString(),
+              minBalanceStress: fc.minBalanceStress.amount, firstShortfall: fc.shortfalls[0]?.date ?? null,
+              bestVaultApyBps: String(bestVaultApy), options, criticality, defaultOrder: order,
+              vendorNotes: Object.fromEntries(obRows.filter((r) => r.vendor_notes).map((r) => [r.obligation_id, r.vendor_notes!])),
+            },
+          }));
+        }
+      }
       const plan = llm?.plan ?? defaultPlan(options, order);
-      await q("update cycles set plan = $2 where id = $1", [cycleId, JSON.stringify({ mode: llm ? "llm" : "default_policy", model: llm ? w.PLANNER_MODEL : null, plan })]);
+      await q("update cycles set plan = $2 where id = $1", [cycleId, JSON.stringify({ mode: llm ? "llm" : "default_policy", model: llm ? w.PLANNER_MODEL : null, factsHash, reusedPlan, plan })]);
 
       const validated = await step("validate_plan", async () => validateObligationPlan({
         today: day, proposed: plan, options, criticality, defaultOrder: order,
@@ -206,6 +231,21 @@ export async function runCycle(w: WorkerCfg, trigger: string, opts: { dryRun?: b
         else if (kind === "HOLD") await q("update obligations set status = 'held' where obligation_id = $1", [r.obligation_id]);
       }
 
+      const consolidatableNow = w.COLLECTIONS_PK ? await consolidatable(BigInt(gatewayEntries.find((g) => g.wallet === "collections")?.balance ?? "0")) : 0n;
+      // Treasury-level decisions (yield). Same persist → commit → execute → reveal path; the deterministic default policy decides.
+      const treasuryRows = await step("treasury_decisions", () => planTreasuryDecisions({
+        entityId: entity.id, cycleId, snap, snapHash: snapRes.hash, forecastHash, fc, firstSeq: seq, scenario: trigger.startsWith("scenario"), network: snap.network,
+        yield: { enabled: Boolean(w.YIELD_PK) || Boolean(opts.vaults), minSweepUnits: w.YIELD_MIN_SWEEP_UNITS, horizonDays: w.YIELD_HORIZON_DAYS, vaults: opts.vaults ?? exploreVaults },
+        gateway: { consolidatable: consolidatableNow },
+        services: { enabled: Boolean(w.SPEND_PK) && Boolean(w.SERVICE_URLS), spendGatewayBalance: BigInt(gatewayEntries.find((g) => g.wallet === "spend")?.balance ?? "0") },
+        fx: {
+          enabled: Boolean(w.FX_WALLET_ID) || Boolean(opts.fxPrices),
+          eurcDueSoon: obRows.filter((r) => r.token === "EURC" && r.due_date <= addDaysIso(day, 14)).reduce((a, r) => a + BigInt(r.amount), 0n),
+          marginBps: 200n, prices: opts.fxPrices ?? referencePrices,
+        },
+      }));
+      rows.push(...treasuryRows);
+
       await step("commit", async () => { if (!effectiveDry) for (const row of rows) await commitDecision(row); });
       if (!effectiveDry) {
         await step("execute", async () => {
@@ -223,6 +263,10 @@ export async function runCycle(w: WorkerCfg, trigger: string, opts: { dryRun?: b
           }
         });
       }
+      // Re-index right away so the database mirror (decision states, chain_events, receivables, metrics) already includes this
+      // cycle's own commits/executions/reveals instead of lagging one cycle behind.
+      await step("sync_after", () => indexOnce());
+
       // Follow-ups and housekeeping never block settlement: they run after the cycle's own commit/execute/reveal.
       await step("escalations", async () => {
         await expireEscalations();
@@ -231,8 +275,26 @@ export async function runCycle(w: WorkerCfg, trigger: string, opts: { dryRun?: b
           tokenSymbol: (addr) => (addr.toLowerCase() === net(snap.network).tokens.EURC.toLowerCase() ? "EURC" : "USDC"),
         });
       });
-      await step("followups", () => relayPending(w.RELAYER_PK));
-      await step("metrics", () => snapshotMetrics(snap.network, snap));
+      await step("followups", async () => {
+        await relayPending(w.RELAYER_PK);
+        await runCollections({
+          resendApiKey: w.RESEND_API_KEY, resendApiUrl: w.RESEND_API_URL, fromEmail: w.FROM_EMAIL, fromName: w.FROM_NAME,
+          frontendUrl: w.FRONTEND_URL, publicBaseUrl: w.PUBLIC_BASE_URL,
+        });
+        await settleX402Receipts(w.COLLECTIONS_PK);
+        await runFxFollowUps(fxCfg(w));
+        await retryPendingMints(w.COLLECTIONS_PK);
+        await runGatewayFollowUps(w.COLLECTIONS_PK);
+        await runSpendFollowUps(w.SPEND_PK);
+        await runServicePurchases({ spendPk: w.SPEND_PK, urls: w.SERVICE_URLS, network: snap.network });
+        await runYieldFollowUps(w.YIELD_PK);
+        await refreshPositions(w.YIELD_PK);
+      });
+      const metrics = await step("metrics", () => snapshotMetrics(snap.network, snap));
+      await step("feedback", async () => {
+        if (snap.network !== "testnet") return null; // ERC-8004 addresses are only verified on testnet
+        return postDailyFeedback({ agentId: w.ERC8004_AGENT_ID, agreementBps: metrics.decisionAgreementBps }).catch((e) => { log.warn({ err: String(e) }, "daily ERC-8004 feedback failed"); return null; });
+      });
       return await finish("done");
     } catch (e) {
       if (e instanceof OperatorHalt) { log.error({ reason: e.message }, "operator halted"); return await finish("failed", `halt: ${e.message}`); }
@@ -291,4 +353,11 @@ async function loadForecastInputs(entityId: string, day: string, startingCash: b
     subscriptions: subs.map((s) => ({ nextDue: s.next_due, intervalDays: s.interval_days, amount: BigInt(s.amount) })),
     receivables: recvs.map((r) => ({ expectedDate: addD(r.due_date, Math.ceil(Number(r.avg_days_late))), outstanding: BigInt(r.amount_due) - BigInt(r.amount_paid) })),
   };
+}
+
+const addDaysIso = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+
+function fxCfg(w: WorkerCfg): FxCfg | null {
+  if (!w.CIRCLE_API_KEY || !w.CIRCLE_ENTITY_SECRET || !w.FX_WALLET_ID || !w.FX_WALLET_ADDRESS) return null;
+  return { circleApiKey: w.CIRCLE_API_KEY, entitySecret: w.CIRCLE_ENTITY_SECRET, walletId: w.FX_WALLET_ID, walletAddress: w.FX_WALLET_ADDRESS as `0x${string}`, appKitKey: w.APP_KIT_API_KEY, maxDeviationBps: w.FX_MAX_DEVIATION_BPS };
 }

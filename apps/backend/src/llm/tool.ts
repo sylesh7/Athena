@@ -40,11 +40,13 @@ export function resolveLlm(env: {
   return null;
 }
 
-export async function callTool(c: LlmCreds, r: ToolRequest): Promise<unknown> {
+export interface ToolResult { output: unknown; inputTokens: number; outputTokens: number }
+
+export async function callTool(c: LlmCreds, r: ToolRequest): Promise<ToolResult> {
   return c.provider === "openai" ? callOpenAI(c, r) : callAnthropic(c, r);
 }
 
-async function callAnthropic(c: LlmCreds, r: ToolRequest): Promise<unknown> {
+async function callAnthropic(c: LlmCreds, r: ToolRequest): Promise<ToolResult> {
   const client = new Anthropic({ apiKey: c.apiKey, timeout: r.timeoutMs, maxRetries: 1 });
   const content: Anthropic.MessageParam["content"] = r.pdfBase64
     ? [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: r.pdfBase64 } }]
@@ -59,10 +61,10 @@ async function callAnthropic(c: LlmCreds, r: ToolRequest): Promise<unknown> {
   });
   const block = res.content.find((b) => b.type === "tool_use");
   if (!block || block.type !== "tool_use") throw new Error("model returned no tool call");
-  return block.input;
+  return { output: block.input, inputTokens: res.usage.input_tokens, outputTokens: res.usage.output_tokens };
 }
 
-async function callOpenAI(c: LlmCreds, r: ToolRequest): Promise<unknown> {
+async function callOpenAI(c: LlmCreds, r: ToolRequest): Promise<ToolResult> {
   const userContent: unknown = r.pdfBase64
     ? [{ type: "file", file: { filename: "invoice.pdf", file_data: `data:application/pdf;base64,${r.pdfBase64}` } }]
     : r.text ?? "";

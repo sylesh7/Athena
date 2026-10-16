@@ -3,7 +3,7 @@
 // plus the escalation path (human approval) and idempotence (a second cycle commits nothing new).
 // Skipped when anvil/forge aren't on PATH. anvil is NOT Arc: this proves logic, not Arc-specific behavior.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync , readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { randomBytes, createHash } from "node:crypto";
@@ -27,7 +27,7 @@ const USDC = "0x3600000000000000000000000000000000000000" as Address;
 const EURC = "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a" as Address;
 const ONE = 1_000_000n;
 const ANVIL_PORT = 18546;
-const PG_PORT = 54329;
+const PG_PORT = 54343;
 const RPC = `http://127.0.0.1:${ANVIL_PORT}`;
 const abi = treasuryAbiJson as Abi;
 const contractsDir = resolve(import.meta.dirname, "../../../packages/contracts");
@@ -110,7 +110,7 @@ beforeAll(async () => {
     OPERATOR_PK: KEY.operator, ANTHROPIC_API_KEY: "unused", PLANNER_MODEL: "none", EXTRACTOR_MODEL: "unused",
   });
   const db = await import("../src/db.js");
-  const migrationSql = ["0001_init.sql", "0002_security.sql"]
+  const migrationSql = readdirSync(migrationsDir).filter((n) => n.endsWith(".sql")).sort()
     .map((f) => readFileSync(join(migrationsDir, f), "utf8"))
     .join("\n")
     .replace(/insert into storage\.buckets[^;]*;/i, ""); // Supabase-only
