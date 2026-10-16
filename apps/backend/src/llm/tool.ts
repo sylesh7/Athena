@@ -83,8 +83,9 @@ async function callOpenAI(c: LlmCreds, r: ToolRequest): Promise<ToolResult> {
   if (!res.ok) throw new Error(`openai ${res.status}: ${(await res.text()).slice(0, 300)}`);
   const body = (await res.json()) as {
     choices?: Array<{ message?: { tool_calls?: Array<{ function?: { arguments?: string } }> } }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
   const args = body.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
   if (!args) throw new Error("model returned no tool call");
-  return JSON.parse(args);
+  return { output: JSON.parse(args), inputTokens: body.usage?.prompt_tokens ?? 0, outputTokens: body.usage?.completion_tokens ?? 0 };
 }
