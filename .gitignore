@@ -42,3 +42,9 @@ recovery-file*
 .vscode/
 .idea/
 *.swp
+
+# v3 treasury workspace
+packages/contracts/cache/
+packages/contracts/broadcast/
+packages/contracts/lib/forge-std/
+.env.local

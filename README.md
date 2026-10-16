@@ -1,271 +1,328 @@
-# Athena - Trust-minimized streaming agent broker on Arc · Lepton Agents Hackathon
->Athena is a trust-minimized agent broker on Arc that routes work between independently built x402-protected agents, commits its routing logic and prediction before execution, and uses USDC collateral plus on-chain reveal to make broker trust verifiable instead of assumed.
+# Athena — Autonomous business treasury on Arc · Tameion Agents Hackathon (Canteen × Circle × Arc)
+
+> Athena runs the financial side of a business as a continuous operation. It holds the company's USDC and EURC in one smart contract where budgets, approval limits, the approved payee list and a minimum operating balance are enforced on-chain. Every decision is **hash-committed before money moves and revealed on-chain afterwards**. An operator that fails to reveal is frozen by the contract.
+
+*Lineage: rebuilt from the Lepton-hackathon streaming broker. The v1 broker/provider/stream code in this repo is legacy and slated for removal (see [Repo structure](#repo-structure)).*
+
+**Deadline: October 17, 2026, 11:59 PM ET.**
 
 ---
 
 ## One-line problem
 
-AI agent brokers are already causing expensive mistakes, fraud, and fast operational damage, but there is still no trust-minimized way to prove that a broker routed honestly, predicted responsibly, and accepted financial consequences when it was wrong.
+An AI agent that reads invoices and posts payments can make the six bookkeeping errors that double-entry accounting does not catch, and today nobody can replay *why* it paid what it paid.
 
----
+## The problem, in depth
 
-## Market context
-
-| Problem area | Real stat | Why Athena matters |
-|---|---|---|
-| Expensive agent failures | **64%** of billion-dollar enterprises lost more than **$1M** from AI agent failures last year | Broker commits reasoning on-chain before execution; bond slashed if it lied or mispredicted |
-| AI fraud and bot-driven abuse | Consumer fraud losses hit **$12.5B**; **60%** of companies saw increased losses in 2024–2025 | Every broker decision sealed on-chain and collateral-backed — no silent misrouting |
-| Fast autonomous damage | Confirmed AI agent security incidents produced **~$15.6M** in documented losses | Routing decisions, predictions, and reputation updates are tamper-evident and financially accountable |
-
----
-
-## Three problem layers
-
-**1) Broker trust failures cost enterprises millions.**
-64% of billion-dollar enterprises lost more than $1M from AI agent failures in the past year. The cause is not dramatic hacks — it is opaque routing humans cannot audit in time. Athena forces the broker to commit reasoning on-chain before the task runs and slashes its USDC bond on a bad reveal.
-
-**2) AI-driven fraud is a $12.5B problem.**
-Experian's 2026 forecast puts consumer fraud losses at $12.5B, with 60% of companies reporting year-over-year increases. Athena closes the trust gap by requiring every broker decision to be sealed on-chain and backed by collateral before execution.
-
-**3) Autonomous agents cause rapid, hard-to-reverse damage.**
-Confirmed AI agent incidents total ~$15.6M in losses, driven by prompt injection, integration vulnerabilities, and unverifiable autonomy. Athena reduces broker-side harm by making routing decisions, outcome predictions, and reputation updates tamper-evident on Arc.
-
----
+Canteen's essay *Agents and Ledgers in 2026* lists six errors where debits still equal credits afterwards. A model that handles money can make all six, and a prompt-injected invoice, a hallucinated amount or a misread decimal is enough. Worse, a blockchain proves *consistency*, not *independence*: payer and payee read the same record. Athena therefore anchors every vendor payment to an outside document bundle (invoice + purchase order + receipt) whose hash is committed with the payment.
 
 ## What Athena does
 
-The broker evaluates providers, makes a falsifiable outcome prediction, hashes the decision, and commits it on-chain before the task runs. After the provider finishes, the broker reveals the reasoning — the contract verifies the hash match and prediction accuracy — and the USDC bond is released or slashed automatically.
+On every cycle (every 15 minutes, or on an event) the agent:
+
+1. Reads what the business holds: treasury balance, reserve, yield positions, USDC on other chains via Circle Gateway.
+2. Reads what it owes and is owed: vendor invoices, contractor milestones, subscriptions, customer receivables.
+3. Runs a 30-day cash-flow forecast with a stress case.
+4. Decides per obligation: pay now, pay early for a discount, schedule, hold, or send to a human; and how much idle cash goes to yield, and where.
+5. **Commits a SHA-256 hash of every decision on-chain before any money moves** (balance seen, forecast run, rule applied, documents matched, payment intended).
+6. Executes through the contract, which re-checks every rule.
+7. **Reveals the full record on-chain.** The contract recomputes the hash and rejects a mismatch.
+
+The model proposes, deterministic code validates, the contract enforces. The LLM never holds a key and never decides a release.
+
+## The six mistakes and Athena's defense for each
+
+| Error | What it looks like for an agent | Defense | Where |
+|---|---|---|---|
+| **Omission** | Invoice never paid; payment never matched | Every document becomes a tracked obligation; every inflow must name a registered receivable; unmatched inflows flagged | Phases 17, 20, 35 |
+| **Commission** | Paying the account printed on a fraudulent invoice | Payees exist only in an on-chain registry; only the human approver activates them; address changes wait out a cooldown; invoice addresses are compared, never used | Phases 8, 24 |
+| **Principle** | Capex booked as a subscription | One category per payee; budgets per category; a payment cannot choose its category | Phases 7, 8 |
+| **Original entry** | `6.000000` read as `6.00`; retry pays twice | Strict decimal parser that refuses rather than rounds; deterministic obligation ids; contract refuses to settle an id twice | Phases 3, 10, 22 |
+| **Compensating** | Rounding residue quietly booked away | Integer atomic units only; excess decimals refused | Phases 3, 22 |
+| **Complete reversal** | Paying a customer instead of collecting | Money leaves only via `execute()` to a registered payee; comes in only via `payReceivable()`/`fund()` — different functions, different roles | Phases 9, 10 |
+
+## Design principles
+
+1. The model plans, the validator checks, the contract enforces.
+2. Commit before acting, reveal after acting, get frozen if you don't (including "hold" and "do nothing").
+3. Refuse rather than repair: nothing is rounded or fixed quietly.
+4. The agent can tighten its own limits, never loosen them.
+5. Every vendor payment points at a document (`evidenceHash`).
+6. Humans are reached only by contract-created escalations, approved with their own wallet, never by the server.
+7. Every write goes through one validated path (API, scheduler and MCP share it).
+8. Dry run first: any cycle can run without sending a transaction.
 
 ---
-
-## How it solves the problem
-
-- **Opaque routing** — broker must commit reasoning before selecting a provider; silent misrouting is impossible.
-- **Overconfident promises** — broker stakes USDC on its prediction; wrong judgment has a direct financial cost.
-- **Weak accountability** — bond and reveal make routing auditable on-chain, not just logged in a private dashboard.
 
 ## What is used
 
-Athena uses the Arc / Circle stack directly:
+- **Developer-Controlled Wallets** — FX wallet and house vendors; **Agent Wallets** with spending policies (mainnet purchases).
+- **Gateway + x402/Nanopayments** — unified cross-chain balance, consolidation, service purchases, agent-payable receivable links.
+- **CCTP V2** — vendors paid natively on other chains (burn inside the treasury contract, attest, mint).
+- **App Kit Swap** — USDC ↔ EURC for euro vendors. **Earn Kit** — permissionless yield vaults (optional USYC).
+- **Compliance Engine** — screening of payees and customers at onboarding and on a schedule.
+- **ERC-8004** — agent identity and reputation (testnet). **Contracts** — `AthenaTreasury.sol`. **USDC and EURC** throughout.
+- **Anthropic API** — invoice extraction and the planner (suggestions only). **Supabase** — documents, vendor master, decision mirror.
 
-- **x402 and Gateway** for payment-triggered task access and nanopayments.
-- **Circle Developer-Controlled Wallets** for the provider agents (the broker stays a plain EOA — see `BACKEND_B_README.md` for why).
-- **USDC on Arc** for task payments, escrow, and slashing.
-- **Solidity contracts** for commit-reveal and escrow logic.
-- **ERC-8004** for agent identity and reputation.
-- **ERC-8183** for job escrow (Athena as evaluator).
-- **CCTP V2** for the Phase 4 cross-chain payout stretch goal.
-- **Arc Testnet** for fast settlement and live demoability.
+## How this scores against the judging criteria
 
-## Why this is better than a normal broker
-
-A normal broker can claim it chose the best provider and leave you to trust that story. Athena turns that story into a financial commitment that can be checked later. That is the key shift: it does not merely route tasks, it makes routing decisions economically provable.
-
----
-
-## v2 — post-submission additions
-
-Built after the hackathon deadline, on the same real stack (no mocks, no new infra):
-
-- **Circle Compliance Engine gate.** Every `POST /stream-task` now screens the paying client's address through Circle's live Compliance Engine (`api.circle.com/v1/w3s/compliance/screening/addresses`) *before* the x402 Gateway middleware ever charges it — a `DENIED` or unreachable result rejects the request with no payment taken. Previously-unused piece of the Circle stack; verified live (testnet chain codes only, confirmed by testing mainnet codes correctly 400). Try it standalone at `GET /compliance/:address`, or live on the Evidence page.
-- **Evidence page** (`/evidence` in the frontend). Real-time proof the backend is actually doing what this README claims:
-  - **System Health** — live reachability of every service Athena depends on (3 providers, MCP monitor, Arc RPC), checked on load, not cached.
-  - **On-Chain Events** — `Committed`/`Revealed` events read directly off AthenaCommit via `eth_getLogs`, with Arcscan links. True regardless of whether the backend process has restarted since.
-  - **Live Backend Logs** — a structured, in-memory activity feed (`GET /logs`) of the stream loop's real decisions as they happen, with one hard rule preserved from the commit-reveal design: nothing before the reveal phase may log the sealed provider/prediction, or the log feed would leak the sealed decision through a side channel.
-  - **Compliance Screening tool** — screen any address live against Circle's Compliance Engine from the browser.
+| Criterion | Weight | How Athena scores | Phases |
+|---|---|---|---|
+| Agentic sophistication | 30% | Per-obligation timing (pay now / early-pay / schedule / hold / escalate), prioritization under shortfall, yield vault selection, cross-chain consolidation, FX timing, collections follow-up — each committed with its reasoning before it executes; the contract decides what goes to a human. Not a cron job with an LLM bolted on. | 25–36 |
+| Traction | 30% | A scheduled operator settling real recurring obligations for the team's own operations through the whole window; live counters for every RFB 04 metric; automatic Canteen updates; a small set of real **mainnet** payments. | 37, 42–45 |
+| Circle tool usage | 20% | DCW, Agent Wallets, Gateway, x402, CCTP V2, App Kit Swap, Earn Kit, Compliance Engine, Contracts, USDC and EURC, optional USYC/Paymaster. | 5, 18, 24, 31–36, 45 |
+| Innovation | 20% | Every decision sealed before execution, verified on-chain on reveal, backed by a reveal deadline that freezes the agent if missed — a continuous version of the Athenian *euthyna* audit. The opposite of releasing funds on a model's confidence score. | 10–12, 28–29, 38 |
 
 ---
 
-## How this scores against every judging criterion
+## Architecture
 
-| Criterion | Weight | How Athena scores |
-|---|---|---|
-| Agentic Sophistication | 30% | Athena makes two autonomous decisions per stream — who to route to AND what quality/latency to predict — both sealed before the stream starts, both have real USDC consequences. Self-bootstraps via Circle skills with no human writing integration code. MCP monitor decides in real-time whether to continue or slash. Full autonomy, not automation. |
-| Traction | 30% | Every stream = multiple on-chain nanopayment transactions. Each routing decision = a commit + bond + reveal. Running 10 streams = 50+ real on-chain transactions logged on Arcscan. Log every milestone via `arc-canteen update traction` throughout the build window. Cross-team traction: other Lepton teams building x402 services can plug their endpoints in as Athena providers. |
-| Circle Tool Usage | 20% | Agent Wallets (per agent, policy-controlled), Gateway/Nanopayments (per-call stream), x402 (HTTP payment trigger per call), Circle CLI + skills (autonomous setup), Agent Marketplace (provider discovery), Contracts (AthenaCommit.sol + ERC-8183), USDC throughout, CCTP V2 (Phase 4 cross-chain). |
-| Innovation | 20% | Commit-reveal tied to a falsifiable per-call prediction — not just "did it succeed" but "did it match what I specifically predicted" — with streaming nanopayments as the economic primitive rather than a lump payment. MCP as a live stream quality oracle. Not in any prior art we found. |
+```
+                    ┌──────────────────────────────────────────────────────────┐
+                    │              ARC (testnet 5042002 / mainnet 5042)        │
+ customers ─payReceivable()─►┌────────────────────────────┐                    │
+ x402 pay link ─►            │       AthenaTreasury       │─safeTransfer─► vendors (Arc)
+ Gateway mint ─►             │ roles · tokens · budgets   │─depositForBurn─► CCTP V2 ─► vendors (Base…)
+                    │        │ payee registry + cooldown  │─► yield wallet ─► Earn Kit vaults
+                    │        │ commit → execute → reveal  │─► fx wallet ─► App Kit Swap ─► fund()
+                    │        │ escalations · reserve      │─► spend wallet ─► Gateway ─► x402 services
+                    │        │ audit-arrears breaker      │                    │
+                    │        └─────────────┬──────────────┘                    │
+                    └──────────────────────┼───────────────────────────────────┘
+                                           │ events
+                      ┌────────────────────▼─────────────────────┐
+                      │ WORKER (Node 22, TS): indexer · snapshot │
+                      │ forecast · ingest/extract/match · policy │
+                      │ planner · validator · executor/revealer  │
+                      │ yield · gateway · cctp relayer · fx · AR │
+                      └───────┬──────────────────┬───────────────┘
+                              │                  │
+                      ┌───────▼──────┐    ┌──────▼────────┐    ┌────────────────┐
+                      │ Postgres     │◄───│ API (REST+SSE)│───►│ Frontend       │
+                      │ (Supabase)   │    └──────┬────────┘    │ (6 pages)      │
+                      └──────────────┘           │             └───────┬────────┘
+                                          ┌──────▼───────┐             │ approver signs
+                                          │ MCP server   │             ▼ approveEscalation()
+                                          │ (read-only)  │       human APPROVER wallet
+                                          └──────────────┘
+```
 
----
+**Three processes, one database, one contract.** The *worker* is the only holder of the operator key. The *API* is read-mostly (plus uploads and queued requests) and never holds it. The *MCP server* is a read-only audit lens ("why did Athena pay this early?" from Claude Desktop or Claude Code).
 
-## 4 README files in this repo
-
-| File | Owner | What it covers |
-|---|---|---|
-| `README.md` | Everyone reads | This file — index, shared facts, handoff map, judging alignment |
-| `BACKEND_A_README.md` | Backend A | Contracts: AthenaCommit.sol, ERC-8183 integration, ERC-8004 registration, CCTP Phase 4 |
-| `BACKEND_B_README.md` | Backend B | Stream loop, x402 payments, Circle CLI/wallets, deterministic broker logic, MCP quality monitor |
-| `FRONTEND_README.md` | Frontend | All 6 pages, state management, data flow, component breakdown |
-
----
-
-## Shared facts — pin these, never re-derive mid-build
-
-| Fact | Value |
-|---|---|
-| Chain ID | `5042002` (hex `0x4cef52`) |
-| RPC | `arc-canteen rpc-url` after `arc-canteen login` (Canteen-hosted proxy) |
-| Backup RPC | `https://rpc.testnet.arc.network` |
-| Explorer | `https://testnet.arcscan.app` |
-| Faucet | `https://faucet.circle.com` (select Arc Testnet) |
-| Native gas | USDC |
-| USDC ERC-20 (use this for all amounts) | `0x3600000000000000000000000000000000000000` — **6 decimals** |
-| USDC native interface | **18 decimals** (gas only — never use this for payment amounts) |
-| ERC-8004 IdentityRegistry | `0x8004A818BFB912233c491871b3d84c89A494BD9e` |
-| ERC-8004 ReputationRegistry | `0x8004B663056A597Dffe9eCcC1965A193B7388713` |
-| ERC-8183 job escrow (Arc) | `0x0747EEf0706327138c69792bF28Cd525089e4583` |
-| CCTP V2 TokenMessengerV2 (Arc, domain 26) | `0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA` |
-| CCTP V2 MessageTransmitterV2 | `0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275` |
-| Circle Gateway facilitator (Arc testnet) | `https://gateway-api-testnet.circle.com` · network `eip155:5042002` |
-| Circle Agent Marketplace | `https://agents.circle.com/services` |
-| Circle skills setup | `curl -sL https://agents.circle.com/skills/setup.md` |
-| Solidity pragma | `^0.8.28` |
-| OpenZeppelin | `5.x` — `PaymentSplitter` REMOVED, use manual split. `ReentrancyGuardTransient` available. |
-| Canteen CLI install | `uv tool install git+https://github.com/the-canteen-dev/ARC-cli` |
-| Circle CLI install | `npm install -g @circle-fin/cli` (Node v20.18.2+) |
-| Reference repo | `github.com/the-canteen-dev/circle-agent` + `circlefin/arc-nanopayments` |
-
-⚠️ **USDC decimals rule — read once, remember always:** all payment amounts, bond amounts, escrow amounts use the **6-decimal ERC-20 interface**. The 18-decimal native interface is gas only. Mixing these is the #1 bug on Arc — if a number looks wrong by a factor of a trillion, this is why.
-
-⚠️ **`anvil` is not Arc.** Local Foundry simulator cannot reproduce Arc's blocklist enforcement, native precompiles, or EIP-7708 Transfer logs. Unit tests: `anvil`. Integration tests: real Arc Testnet RPC.
-
-⚠️ **`circle services pay` has no loop/stream mode.** It makes one payment per invocation. Backend B implements the stream loop in application code using `GatewayClient` + `fetchWithPayment` from `@circle-fin/x402-batching/client`. This is confirmed — do not waste time searching for a `--loop` flag that does not exist.
-
----
-
-## The stream flow (everyone must understand this before writing code)
-
-This is the real, currently-implemented flow (see `BACKEND_B_README.md` and `backend/PENDING.md` for the bug-hunt history behind a few of these steps — the ERC-8004/ERC-8183 ABIs in particular didn't match the interfaces on the first attempt, and the sealed-until-reveal mechanism was a later hardening pass, not the original design).
+### One treasury cycle
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Client
-    participant FE as Frontend
-    participant EP as Entrypoint (/stream-task)
-    participant Broker
-    participant CM as Circle Marketplace (CLI)
-    participant E8004 as ERC-8004 (Identity + Reputation)
-    participant E8183 as ERC-8183 (Job Escrow)
-    participant AC as AthenaCommit.sol
-    participant Prov as Provider (x402)
-    participant MCP as MCP Quality Monitor
+    participant W as Worker (operator key)
+    participant T as AthenaTreasury
+    participant K as Keeper
+    actor H as Human approver
 
-    Client->>FE: Connect wallet, submit task
-    FE->>EP: POST /stream-task (x402 $0.01 via Gateway)
-    EP->>Broker: routeTask(taskDescription, category)
-    Broker->>CM: circle services search --category ...
-    CM-->>Broker: marketplace listings (filtered to Arc-Testnet-payable)
-    Broker->>E8004: getClients(tokenId) + getSummary(tokenId, clients)
-    E8004-->>Broker: reputation summary (avgQuality, sampleSize)
-    Broker->>Broker: score providers, select best, predict quality + latency
-    EP->>EP: taskId = keccak256(client, taskDescription, blockNumber)
-    EP-->>FE: { taskId, statusUrl } (routing decision stays sealed)
-
-    Note over Broker: decision object hashed with SHA-256 and sealed<br/>server-side — not exposed via the status API until reveal
-    Broker->>E8183: createJob + setBudget (Circle DCW tx) + fund(jobId)
-    E8183-->>Broker: jobId
-    Broker->>AC: commit(taskId, commitHash, bondAmount, client, erc8183JobId)
-    AC-->>Broker: Committed event — bond locked in the pull-payment ledger
-
-    loop per call — stop early on 3 consecutive misses
-        Broker->>Prov: GatewayClient.pay() nanopayment ($0.000001 x402)
-        Prov-->>Broker: data + qualityScore + latencyMs
-        Broker->>MCP: record_call_result(quality, latency, predicted*)
-        MCP-->>Broker: verdict (continue | slash)
+    W->>W: sync · ingest · validate · snapshot · forecast · policy math
+    W->>W: LLM plan → validator overrules anything infeasible
+    W->>W: canonical record → sha256 (stored before commit)
+    W->>T: commit(decisionId, decisionHash, actionHash)
+    Note over W,T: execute must land in a LATER block
+    W->>T: execute(decisionId, action)
+    alt within budget, limits, floor
+        T-->>W: Executed — vendor paid, obligation settled
+    else soft rule broken
+        T-->>H: Escalated (Telegram + frontend)
+        H->>T: approveEscalation() signed in browser
     end
-
-    Broker->>MCP: get_final_verdict(taskId)
-    MCP-->>Broker: predictionMet (bool)
-    Broker->>E8183: submitDeliverable(jobId, deliverableHash)
-    Broker->>AC: reveal(taskId, predictionMet, commitHash, deliverableHash)
-    AC->>AC: require(revealedHash == committed hash)
-    AC->>E8183: complete(jobId) if predictionMet, else reject(jobId)
-    AC-->>Broker: Revealed event — bond released or slashed
-
-    Broker->>E8004: giveFeedback(providerTokenId, brokerTokenId) via a separate validator wallet
-    opt Provider 3 selected, predictionMet, CCTP enabled
-        Broker->>Broker: depositForBurn (Arc) → poll Iris attestation → receiveMessage (Base Sepolia)
+    W->>T: reveal(decisionId, recordBytes)
+    T->>T: require sha256(recordBytes) == committed hash
+    opt reveal overdue
+        K->>T: flagOverdue(decisionId)
+        Note over T: commit/execute revert with AuditInArrears until revealed
     end
-
-    loop Frontend polls every ~2s
-        FE->>EP: GET /stream-status/:taskId
-        EP-->>FE: phase, live callHistory, sealed fields only once phase="revealed"
-    end
-    FE->>FE: recompute SHA-256(decisionPreimage) in-browser, diff against on-chain commitHash
 ```
+
+Full 16-step cycle, phase by phase: [BACKEND_README.md](BACKEND_README.md) §A6.
 
 ---
 
-## Cross-team handoff map — critical path
+## Shared facts — pinned, never re-derive mid-build
 
-| # | From | To | When | What |
+Everything reads from `packages/shared/addresses.json`. If something looks stale, re-check the source and update that one file. `null` = not verified yet; code must refuse the feature rather than guess.
+
+| Fact | Testnet | Mainnet |
+|---|---|---|
+| Chain ID | `5042002` (`0x4cef52`) | `5042` (`0x13b2`) |
+| RPC | `arc-canteen rpc-url` (preferred) · `https://rpc.testnet.arc.io` | `https://rpc.mainnet.arc.io` |
+| Explorer | `https://explorer.testnet.arc.io` | `https://explorer.arc.io` |
+| Faucet | `https://faucet.circle.com` | — |
+| CCTP domain | `26` | `26` |
+| USDC (ERC-20, **6 dec**) | `0x3600000000000000000000000000000000000000` | same |
+| EURC (6 dec) | `0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a` | `0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1` |
+| USYC (optional) | `0xe9185F0c5F296Ed1797AaE4238D26CCaBEadb86C` | `0x8a5D989Bbb96929F689B0200f435f53dA42bF490` |
+| CCTP TokenMessengerV2 | `0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA` | `0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d` |
+| CCTP MessageTransmitterV2 | `0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275` | `0x81D40F21F12A8F0E3252Bccb954D722d4c464B64` |
+| Gateway Wallet | `0x0077777d7EBA4688BDeF3E311b846F25870A19B9` | `0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE` |
+| Gateway Minter | `0x0022222ABE238Cc2C7Bb1f21003F0a260052475B` | `0x2222222d7164433c4C09B0b0D809a9b52C04C205` |
+| ERC-8004 Identity / Reputation | `0x8004A818BFB912233c491871b3d84c89A494BD9e` / `0x8004B663056A597Dffe9eCcC1965A193B7388713` | not verified — feature off |
+| Gateway API / x402 facilitator | `https://gateway-api-testnet.circle.com` (`eip155:5042002`) | ⚠️ verify (middleware default is mainnet) |
+| CCTP attestation (Iris v2) | `https://iris-api-sandbox.circle.com` | `https://iris-api.circle.com` |
+| Compliance Engine | `https://api.circle.com/v1/w3s/compliance/screening/addresses` | same host, mainnet chain codes |
+
+CCTP destination domains: Ethereum/Sepolia `0` · Avalanche `1` · OP `2` · Arbitrum `3` · Base/Base Sepolia `6` · Polygon `7` · Arc `26`. Full tables incl. USYC Teller/Entitlements/Oracle: [BACKEND_README.md](BACKEND_README.md) §A7.
+
+⚠️ Old material uses `rpc.testnet.arc.network` and `testnet.arcscan.app`. Current docs use the `arc.io` domains above; old URLs are aliases — don't hardcode them. Never commit an RPC URL that embeds an auth token (the v1 `shared/addresses.json` did).
+
+⚠️ **USDC decimals rule:** every budget, invoice, payment and forecast is the **6-decimal ERC-20** value in integer atomic units (`1 USDC = 1_000_000`). The 18-decimal native interface is gas only. A number off by ~10¹² means you read the native balance.
+
+⚠️ **`anvil` is not Arc.** It can't reproduce native-coin precompiles, blocklist enforcement or EIP-7708 logs. Unit tests on `anvil`; integration tests on the real Arc RPC.
+
+⚠️ **Arc quirks:** order with `block.number`, measure periods with `block.timestamp` (1-second granularity); `PREVRANDAO` is always `0`; finality is immediate (no reorg handling); transfers to/from blocklisted addresses revert, so Athena pays one vendor per transaction.
+
+⚠️ **`circle services pay` has no loop mode** — one payment per call. Programmatic buying uses `GatewayClient` from `@circle-fin/x402-batching/client`, and the x402 middleware's `facilitatorUrl` must be set explicitly on testnet.
+
+## Wallet and key topology
+
+Every key has one job. The backend never holds the admin or approver keys, and the contract refuses to give the operator role to an admin/approver address (or vice versa).
+
+| Key | Type | Held by | Can | Cannot |
 |---|---|---|---|---|
-| H1 | Backend A | Backend B + Frontend | End Phase 1 | `AthenaCommit.sol` function signatures so B can call commit/reveal, Frontend can read events |
-| H2 | Backend B | Backend A | End Phase 1 | 3 provider agent wallet addresses + roles (for ERC-8004 registration) |
-| H3 | Backend A ↔ Backend B | mutual | End Phase 1 | Agreed `taskId` generation scheme — both must use identical scheme |
-| H4 | Backend A | Backend B + Frontend | Phase 2 | Deployed contract address + exported ABI to `shared/` — **ping both actively, don't just commit** |
-| H5 | Backend A | Frontend | Phase 2 | Agent `tokenId`s after ERC-8004 registration → `shared/addresses.json` |
-| H6 | ALL | ALL | Phase 2 end | Full manual loop: commit → bond → single provider call → reveal → slash/release — works live |
-| H7 | Backend B | Frontend | Phase 3 | Status websocket/endpoint for live stream progress display |
-| H8 | Backend B | Frontend | Phase 3 | MCP monitor's per-call quality scores surfaced so frontend can show stream health live |
-| H9 | ALL | ALL | Phase 3 end | Full automated stream: client pays once → stream runs → bond resolves — zero manual steps |
+| Admin | Human (hardware/multisig) | A person | Deploy, budgets, limits, tokens, raise caps, unpause | Anything automated |
+| Approver | Human, ≠ admin | A person, in the frontend | Activate payees, approve/reject escalations, suspend, pause | Run cycles |
+| Operator | EOA | Worker | Commit, execute, cancel, propose payees, tighten caps, register receivables | Activate payees, approve, change budgets, unpause |
+| Keeper | EOA | Separate process | `flagOverdue` | Anything with money |
+| Yield / Spend / Collections | EOAs | Worker | Earn Kit vaults / Gateway + x402 purchases / x402 seller + `payReceivable` | Receive more than their budget allows |
+| FX | Circle DCW | Circle | App Kit swap, `fund()` EURC back | Exceed the FX budget |
+| Validator | EOA | Worker | ERC-8004 feedback | Anything with money |
+| Relayer | EOA on destination chains | Worker | CCTP `receiveMessage` | Anything on Arc |
+
+Yield, spend and FX wallets are themselves registered payees (`YIELD`, `SERVICES`, `FX` categories), so moving money into them is an ordinary committed, policy-checked payment.
+
+---
+
+## Frontend — six pages
+
+Carried over from v1: landing page (`/`), Nav, layout, global styles, `lib/wagmi.ts` (add Arc Testnet, chain ID `5042002`). Replaced: `lib/api.ts` and the dashboard/stream/agents/evidence/live pages.
+
+| # | Page | What it shows | Wallet actions |
+|---|---|---|---|
+| 1 | **Dashboard** `/dashboard` | USDC/EURC balances (reserved/free/floor), runway, budget bars per category, last cycle status, run/dry-run buttons, live SSE event feed | — |
+| 2 | **Obligations** `/obligations` | Tab *Payables*: AP obligations, status, planned date, decision link, detail with 3-way match + evidence bundle. Tab *Review Queue*: held invoices (duplicates, mismatches, unknown vendors, address changes) | Approver resolves held invoices with an **EIP-191 signature** |
+| 3 | **Audit Trail** `/decisions` | Commit/reveal log, newest first; detail with the full record JSON, tx links, and a **verify panel** (`/decisions/:id/verify`) showing the SHA-256 match against the chain | — |
+| 4 | **Approvals** `/approvals` | Tab *Escalations*: pending contract-level escalations with record and proposed action. Tab *Payees*: vendor master, status, cap, risk tier, scorecard, address history | Approver signs `approveEscalation` / `approvePayee` **directly on the contract** |
+| 5 | **Receivables** `/receivables` | AR list with dunning stage, issue new receivable. Public `/pay/[receivableId]` page for customers | Customer connects wallet → `approve` + `payReceivable` |
+| 6 | **Metrics** `/metrics` | All traction numbers (mainnet first), daily series, yield vaults/positions, cross-chain transfer stages (burn → attest → mint) | — |
+
+Rules: **no endpoint moves treasury money** — the frontend only reads, uploads, queues, or relays an approver wallet signature on an already-committed decision. All amounts arrive as strings of atomic units; the UI divides by `1_000_000`. One SSE client on `GET /events/stream` drives live updates across pages. Detail: [FRONTEND_README.md](FRONTEND_README.md).
+
+## API surface (port 3100)
+
+| Page | Endpoints |
+|---|---|
+| Dashboard | `GET /health` (adds `lastCycleAt`, `paused`, `overdueCount`) · `GET /treasury/overview` · `GET /treasury/forecast` · `GET /events/stream` (SSE via Postgres LISTEN/NOTIFY) · `POST /admin/cycle/run` · `POST /admin/cycle/dry-run` |
+| Obligations | `GET /obligations?status=` · `GET /obligations/:id` · `GET /invoices?status=held` · `GET /invoices/:id` · `POST /invoices/upload` (multipart, LLM extraction) · `POST /invoices/:id/resolve` (EIP-191) |
+| Audit Trail | `GET /decisions?kind=&state=` · `GET /decisions/:id` · `GET /decisions/:id/verify` · `GET /cycles` · `POST /decisions/:id/review` |
+| Approvals | `GET /escalations?status=pending` · `GET /escalations/:id` · `GET /payees` · `GET /payees/:id` · `POST /payees` (draft + screening) |
+| Receivables | `GET /receivables` · `GET /receivables/:id` · `POST /receivables` (registers on-chain) · `GET /pay/:receivableId` (x402 link) |
+| Metrics | `GET /metrics` · `GET /yield/vaults` · `GET /yield/positions` · `GET /crosschain` |
+
+Kept from v1: `GET /logs`, `GET /compliance/:address`, `GET /system-health`. Replaced: the broker, provider agents, stream loop, MCP quality monitor and `AthenaCommit.sol`. Contract-signed actions (`approveEscalation`, `approvePayee`) need no backend endpoint, but the indexer must ingest `DecisionEscalated` and `PayeeProposed` to populate the tables. Full list: [BACKEND_README.md](BACKEND_README.md) Phase 40.
+
+## Documents in this repo
+
+| File | Covers |
+|---|---|
+| `README.md` | This file — index, pitch, shared facts, roadmap, submission |
+| `BACKEND_README.md` | Phases 0–47: contract, worker, AP/AR, decision engine, yield, cross-chain, API, MCP, metrics, mainnet, troubleshooting |
+| `FRONTEND_README.md` | The six pages, state, SSE, wallet flows |
+| `backend/README.md` | **Legacy v1** (broker/stream) — to be removed |
 
 ---
 
 ## Repo structure
 
+Target layout (`pnpm` workspaces):
+
 ```
 athena/
-├── contracts/              # Backend A owns
-│   ├── src/
-│   │   ├── AthenaCommit.sol
-│   │   └── AthenaEscrow.sol   (or use ERC-8183 directly)
-│   ├── test/
-│   ├── script/Deploy.s.sol
-│   └── foundry.toml
-├── backend/                # Backend B owns
-│   ├── stream/             # GatewayClient stream loop
-│   ├── agents/             # Broker routing logic (plain TS, no framework) + provider agents
-│   ├── mcp-monitor/        # FastMCP quality evaluator (Python)
-│   └── cctp/               # Phase 4 cross-chain payout
-├── frontend/               # Frontend owns
-│   └── (Next.js)
-├── shared/                 # Backend A writes, everyone reads
-│   ├── addresses.json
-│   └── abis/
-├── README.md
-├── BACKEND_A_README.md
-├── BACKEND_B_README.md
-└── FRONTEND_README.md
+├── packages/
+│   ├── contracts/      Foundry: AthenaTreasury.sol, ITokenMessengerV2, tests, Deploy/Configure scripts
+│   └── shared/         addresses.json, abis/, money.ts, ids.ts, canonical.ts, action.ts, categories.ts
+├── apps/
+│   ├── backend/        worker.ts + api.ts: indexer, snapshot, forecast, ingest, validate, payees,
+│   │                   policy, planner, decisions, escalations, yield, gateway, cctp, fx, ar,
+│   │                   services, reputation, metrics, cycle, keeper
+│   └── mcp/            read-only audit MCP server
+├── supabase/migrations/
+├── scripts/            wallets/ seed/ scenarios/ traction/
+└── frontend/           Next.js (6 pages)
 ```
 
-**Rule:** `shared/addresses.json` is Backend A's file. Nobody else edits it. Nobody hardcodes an address from memory. If it's stale, ping Backend A.
+**Current state:** the tree is still v1 — `backend/` (broker, providers, stream loop, MCP monitor, CCTP payout), `contracts/` (`AthenaCommit.sol`), `shared/`, `frontend/`. Migrating to the layout above is the first build task; only `GET /logs`, `/compliance/:address`, `/system-health`, the landing page, Nav, layout and `lib/wagmi.ts` carry over.
 
----
+## Build roadmap
+
+Each phase ends with an exit check; don't start the next until it passes. Detail in [BACKEND_README.md](BACKEND_README.md).
+
+| Block | Phases | Outcome |
+|---|---|---|
+| Foundations | 0–5 | Accounts/tools, monorepo, addresses, shared money/hash code, DB schema, wallets |
+| The contract | 6–13 | Roles, budgets + floor, payee registry, receivables, commit/execute/reveal, escalations, audit breaker, CCTP |
+| Tests + deploy | 14–15 | Full Foundry suite (one test per bookkeeping error, invariants), deploy, verify, TS↔Solidity hash parity |
+| Chain + knowing the money | 16–19 | Config, indexer, snapshot, forecast |
+| Accounts payable | 20–24 | Intake, LLM extraction (suggestion only), strict decimals, duplicates, 3-way match, payee onboarding/screening |
+| Decision engine | 25–30 | Policy math, planner, validator, decision records, execute/reveal/recover, escalations |
+| Moving money well | 31–34 | Yield (Earn Kit), Gateway, CCTP relayer, EURC swaps |
+| AR + services | 35–36 | Receivables, dunning, x402 pay links, service purchases + independent metering |
+| Running continuously | 37–39 | Cycle orchestrator, keeper, vendor reputation + ERC-8004 |
+| Surfaces | 40–41 | REST + SSE, MCP server |
+| Traction + proof | 42–44 | Metrics + Canteen updates, house operations seed, 15 scenarios |
+| Mainnet + submit | 45–47 | Small real mainnet operation, production deploy, submission |
+
+## Handoffs
+
+| # | From → To | What |
+|---|---|---|
+| H1 | Contract → Backend + Frontend | `AthenaTreasury` ABI exported to `packages/shared/abis`, deployed address + deploy block in `addresses.json` |
+| H2 | Contract → Backend | Hash parity (`actionHash`, SHA-256 record) passes against the live contract |
+| H3 | Backend → Frontend | OpenAPI file + stable response shapes (amounts as atomic-unit strings) |
+| H4 | Backend → Frontend | SSE event types: `cycle.step`, `decision.*`, `escalation.resolved`, `invoice.held`, `payment.in`, `crosschain.stage`, `audit.arrears` |
+| H5 | Frontend ↔ Contract | Approver wallet flows (`approvePayee`, `approveEscalation`) and customer `payReceivable` against the deployed ABI |
+| H6 | All | Phase 43 seed running; first escalation approved from the UI end to end |
+| H7 | All | Scenarios S1–S15 pass; hashes written to `docs/scenarios.md` |
+
+Blocked on a handoff? Say so immediately — silent waiting is the #1 team-killer.
+
+## Mainnet scope and honest labeling
+
+Small and real: same contract with mainnet addresses, funded ≤ 25 USDC, every budget ≤ 10 USDC, approval limit 2 USDC, payee cooldown 24 h, a hardware-wallet admin, one real vendor payment, one real receivable, one real Circle Agent Marketplace purchase, keeper running. Earn Kit, Gateway consolidation and ERC-8004 stay off on mainnet until their addresses/endpoints are verified.
+
+Traction is reported plainly: Athena operates **the team's own operations** ("N vendors, M customers"); testnet yield is labeled testnet; scenario runs are tagged `scenario` and excluded from operating totals.
+
+## Known limits
+
+- The chain proves consistency, not independence — the evidence hash only helps if someone holds the documents (they are stored and downloadable).
+- A compromised operator key can still pay approved payees within limits until a human pauses or revokes; limits, cooldown, evidence requirement, reveal deadline and human-only payee activation bound the damage.
+- An unavailable compliance screen never counts as a pass.
+
+## Quick troubleshooting
+
+| Symptom | Likely cause |
+|---|---|
+| Amount off by ~10¹² | Read native 18-decimal balance instead of the 6-decimal ERC-20 |
+| `CommitNotSettled` | `execute` sent in the same block as `commit` |
+| `ActionMismatch` / `HashMismatch` | Executed/revealed something other than the exact stored action/bytes — reveal `record_bytes` as stored; run the parity test |
+| `AuditInArrears` | A record wasn't revealed in time — run recovery, reveal, find out why reveals stopped |
+| x402 "No Gateway batching option for eip155:5042002" | Middleware `facilitatorUrl` defaulted to mainnet |
+| Blocked on a payment | `PayeeCoolingDown`/`PayeeNotActive` — expected; the obligation re-plans |
+
+More in [BACKEND_README.md](BACKEND_README.md) Part C.
 
 ## Submission checklist
 
-- [ ] Register on Luma: `https://luma.com/5xcrazms` (GitHub + Discord handle required)
-- [ ] Join Canteen Discord: `https://discord.gg/rsVfYutFZg` — introduce yourselves, say what you're building
-- [ ] Join Arc builder Discord: `https://discord.com/invite/buildonarc` — mention Canteen + Lepton in onboarding
-- [ ] Install Canteen CLI: `uv tool install git+https://github.com/the-canteen-dev/ARC-cli`
-- [ ] Install Circle CLI: `npm install -g @circle-fin/cli`
-- [ ] Submit provider agents to marketplace: `forms.gle/7YFzvdmMcn1JH5tF6` — do this Day 1, approval takes time
-- [ ] Log traction updates regularly: `arc-canteen update traction` — not just once at submission
-- [ ] Log product updates: `arc-canteen update product`
-- [ ] Public GitHub repo (required)
-- [ ] Video demo under 3 minutes — Loom/YouTube/Vimeo (required)
-- [ ] Live deployed link (optional but strongly encouraged)
-- [ ] Submit: `forms.gle/SMqLaw2pMGDe58LFA` — resubmit as many times as needed before deadline
-
----
-
-## When something breaks and you don't know whose problem it is
-
-1. Numbers look wrong by a huge factor → USDC decimal mismatch (18 vs 6). Check which interface you're reading.
-2. Contract call reverts unexpectedly → check `taskId` matches agreed scheme (H3), check bond amount is 6-decimal
-3. Stream payments not going through → confirm agent wallet has Gateway balance deposited, not just wallet balance
-4. Hash mismatch on reveal → confirm you're hashing the structured JSON object, not any LLM-generated text
-5. Data looks stale → `shared/addresses.json` is outdated, ping Backend A
-6. MCP monitor not triggering → confirm it's running on `streamable-http` transport, not stdio
-7. Blocked on a handoff → say so immediately. Silent waiting is the #1 team-killer in a hackathon.
+- [ ] Register on Luma: `https://luma.com/ivroypr5` (passphrase in BACKEND_README Phase 0) with exact GitHub + Discord handles
+- [ ] Join Canteen Discord `https://discord.gg/bDaEfsSqc8` and Arc builder Discord `https://discord.com/invite/buildonarc` (mention Canteen + Tameion)
+- [ ] Install Canteen CLI (`uv tool install git+https://github.com/the-canteen-dev/ARC-cli`) and Circle CLI (`npm install -g @circle-fin/cli`)
+- [ ] Public GitHub repo with this README, BACKEND/FRONTEND READMEs, `docs/scenarios.md`, `docs/traction/`
+- [ ] Contract verified on both explorers; live frontend + API URLs
+- [ ] Log traction/product regularly: `arc-canteen update traction` · `arc-canteen update product`
+- [ ] Demo video under 3 minutes (Loom/YouTube/Vimeo)
+- [ ] Submit `https://forms.gle/BBWrdfuircrKiG2i6` before **Oct 17, 11:59 PM ET** (resubmit after each improvement)
+- [ ] Submit Circle product feedback (specific, reproducible)

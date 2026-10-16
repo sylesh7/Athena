@@ -1,0 +1,43 @@
+{
+  "name": "@athena/backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "keys:create": "tsx scripts/create-keys.ts",
+    "bootstrap": "tsx --env-file=.env.local scripts/bootstrap.ts",
+    "worker": "tsx --env-file=.env.local src/worker.ts",
+    "api": "tsx --env-file=.env.local src/api.ts",
+    "keeper": "tsx --env-file=.env.local src/keeper.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.33.1",
+    "@athena/shared": "workspace:*",
+    "@supabase/supabase-js": "2.47.10",
+    "cors": "2.8.5",
+    "express": "4.21.2",
+    "multer": "1.4.5-lts.1",
+    "node-cron": "3.0.3",
+    "pdf-parse": "1.1.1",
+    "pg": "8.13.1",
+    "pino": "9.6.0",
+    "viem": "2.21.54",
+    "zod": "3.24.1",
+    "zod-to-json-schema": "3.24.1"
+  },
+  "devDependencies": {
+    "@types/cors": "2.8.17",
+    "@types/express": "4.17.21",
+    "@types/multer": "1.4.12",
+    "@types/node": "22.10.2",
+    "@types/node-cron": "3.0.11",
+    "@types/pdf-parse": "1.1.4",
+    "@types/pg": "8.11.10",
+    "embedded-postgres": "18.4.0-beta.17",
+    "tsx": "4.19.2",
+    "typescript": "5.7.2",
+    "vitest": "2.1.8"
+  }
+}
