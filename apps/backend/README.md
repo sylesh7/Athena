@@ -30,11 +30,15 @@ Implements the Athena treasury backend (see the root README and BACKEND_README p
 | 33 CCTP: fee math **verified**; relayer (Iris + `receiveMessage`) **written, untested** |
 | 37 cycle orchestrator, worker | **verified** for the AP spine via e2e (default plan); `worker.ts` entrypoint/cron/LISTEN **untested** |
 | 29.3 crash recovery, revert handling, 38 keeper + audit breaker | **verified** (`recovery.test.ts`: crash after persist / after commit / after execute, stale commit, revert → cancel+reveal, `ActionMismatch` halt then repair, keeper flags → operator frozen → reveal unfreezes). The keeper *process* wiring (`keeper.ts`) is untested; its check (`keeper/check.ts`) is |
-| 40 REST + signed actions + admin draft writes | **verified** (`pipeline.test.ts` starts the API: health, lists, auth, drafts, EIP-191 resolve incl. replay/stale/stranger). SSE stream and `/decisions/:id/verify` over HTTP **untested** |
+| 40 REST + signed actions + admin draft writes | **verified** (`pipeline.test.ts` starts the API: health, lists, auth, drafts, EIP-191 resolve incl. replay/stale/stranger). SSE stream and `/decisions/:id/verify` over HTTP **verified** (`api-live.test.ts`) |
 | 42 metrics | **verified** (e2e, incl. scenario exclusion) |
 | 20–21 intake (Storage) + LLM extraction, 24 payee screening/proposal, 35 receivable registration | **written, untested** (need Supabase Storage / Anthropic / Circle; the extracted→obligation pipeline after them is verified) |
-| 31 yield, 32 gateway, 34 FX, 36 service purchases | **not started** |
-| 35 dunning / email / x402 pay links, 39 reputation, 41 MCP, 43 seed, 44 scenarios, 45–47 | **not started** |
+| 31 yield (Earn Kit), 32 Gateway + crash-safe withdraw, 34 FX (App Kit swap), 36 x402 service purchases | **verified live on Arc testnet** (real deposit/withdraw, swap, purchase, 0.4 USDC Gateway mint) + cycle tests (`yield-cycle`, `fx-cycle`). FX return leg needs admin `setSupportedToken(EURC)` |
+| 35 dunning ladder, email (Resend stub-tested), PDF, x402 pay links + settlement | **verified** (`ar.test`, `ar-cycle.test`; a full x402 receivable was paid live) |
+| 39 reputation + ERC-8004 | **verified live** (agent 897363 registered, feedback posted and read back) |
+| 41 MCP server (9 read-only tools, `pnpm mcp`) | **verified** (`mcp.test`) |
+| 43 seed (`pnpm seed`), 42.3 traction (`pnpm traction`) | **done** (seed run against the live DB) |
+| 44 scenarios | covered by the integration tests; live scripted run **pending** the admin configure tx; 45–47 mainnet **not started** |
 
 ### Bugs the integration tests found and fixed
 - viem caches `getBlockNumber` for ~4 s by default, so the indexer could lag a just-mined block; it now passes `cacheTime: 0`.

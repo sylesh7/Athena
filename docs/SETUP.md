@@ -260,14 +260,13 @@ Arc differs from the local test chain. Check each once and note the result:
 
 ## 9. Known gaps — what not to expect
 
-Not built yet, so don't test for it: **yield** (Earn Kit), **Gateway consolidation**, **FX swaps**, **x402 service
-purchases**, **receivable dunning emails and x402 pay links**, **vendor reputation / ERC-8004 feedback**, the **MCP
-server**, the **house-operations seed**, the **fifteen scripted scenarios**, and the **mainnet** work. The
-`/yield/vaults` endpoint does not exist yet and `yield_positions` stays empty.
+Yield, Gateway, FX, x402, dunning/pay links, reputation (ERC-8004) and the MCP server are built; most were verified live
+(see `apps/backend/README.md`). Still pending: the **fifteen live scripted scenarios** (waiting on the admin configure tx)
+and the **mainnet** work. Seed the house dataset with `pnpm seed` and print the daily report with `pnpm traction`.
 
-Written but never run against live services: Anthropic extraction + planner, Circle screening, Supabase Storage upload,
-the Telegram notifier, the CCTP relayer, `worker.ts` cron/LISTEN wiring, and the SSE stream. Expect to debug these on
-first contact, starting with the worker log.
+Written but not yet run against live services: OpenAI planner/extractor inside a full cycle (key works; one-call check
+passed), Resend email, the Telegram notifier inside the worker, the CCTP relayer, and `worker.ts` cron/LISTEN wiring.
+Expect to debug these on first contact, starting with the worker log.
 
 ## Troubleshooting
 

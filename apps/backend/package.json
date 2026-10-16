@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "keys:create": "tsx scripts/create-keys.ts",
+    "seed": "tsx --env-file=.env.local scripts/seed.ts",
+    "traction": "tsx --env-file=.env.local scripts/traction.ts",
     "bootstrap": "tsx --env-file=.env.local scripts/bootstrap.ts",
     "worker": "tsx --env-file=.env.local src/worker.ts",
     "api": "tsx --env-file=.env.local src/api.ts",
