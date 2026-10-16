@@ -45,6 +45,8 @@ export async function consolidatable(collectionsGatewayAvailable: bigint): Promi
   return free > 0n ? free : 0n;
 }
 
+const GATEWAY_FEE_RESERVE = 20_000n; // 0.02 USDC
+
 interface Consolidate { type: "gateway_consolidate"; amount: string; status: "pending" | "minting" | "done" | "failed"; attempts?: number; error?: string; mintTx?: string }
 
 /** Executes pending CONSOLIDATE decisions: withdraw from the collections wallet's Gateway balance straight into the treasury. */
@@ -57,7 +59,9 @@ export async function runGatewayFollowUps(collectionsPk: string | undefined): Pr
   for (const d of rows) {
     const f = d.follow_up;
     try {
-      const avail = await consolidatable(await gatewayAvailable(collectionsPk));
+      const raw = await consolidatable(await gatewayAvailable(collectionsPk));
+      // Gateway charges its fee ON TOP of the withdrawn value (seen live: 0.595 available, 0.5985 required for 0.595), so keep a margin.
+      const avail = raw > GATEWAY_FEE_RESERVE ? raw - GATEWAY_FEE_RESERVE : 0n;
       const amount = BigInt(f.amount) < avail ? BigInt(f.amount) : avail; // never take x402 credits that belong to receivables
       if (amount === 0n) throw new Error("no consolidatable Gateway balance right now");
       // Crash-safe: the attestation is persisted before the mint (see safeWithdraw.ts). If the mint doesn't land now, the
