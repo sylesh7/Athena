@@ -1,0 +1,17 @@
+{
+  "name": "athena-contracts-scripts",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "register": "tsx register-agents.ts",
+    "reputation": "tsx post-reputation.ts"
+  },
+  "dependencies": {
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "tsx": "^4.19.0",
+    "typescript": "^5"
+  }
+}

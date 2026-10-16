@@ -1,0 +1,80 @@
+{
+  "testnet": {
+    "chainId": 5042002,
+    "cctpDomain": 26,
+    "rpcPublic": "https://rpc.testnet.arc.io",
+    "explorer": "https://explorer.testnet.arc.io",
+    "tokens": {
+      "USDC": "0x3600000000000000000000000000000000000000",
+      "EURC": "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
+      "USYC": "0xe9185F0c5F296Ed1797AaE4238D26CCaBEadb86C"
+    },
+    "cctp": {
+      "tokenMessengerV2": "0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA",
+      "messageTransmitterV2": "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275",
+      "irisApi": "https://iris-api-sandbox.circle.com"
+    },
+    "gateway": {
+      "wallet": "0x0077777d7EBA4688BDeF3E311b846F25870A19B9",
+      "minter": "0x0022222ABE238Cc2C7Bb1f21003F0a260052475B",
+      "api": "https://gateway-api-testnet.circle.com",
+      "x402Network": "eip155:5042002"
+    },
+    "usyc": {
+      "teller": "0x9fdF14c5B14173D74C08Af27AebFf39240dC105A",
+      "entitlements": "0xcc205224862c7641930c87679e98999d23c26113",
+      "oracle": "0x52b56c7642E71dc54714d879127d97cd0B3D4581"
+    },
+    "erc8004": {
+      "identityRegistry": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+      "reputationRegistry": "0x8004B663056A597Dffe9eCcC1965A193B7388713"
+    },
+    "earnKitChain": "Arc_Testnet",
+    "appKitChain": "Arc_Testnet",
+    "circleBlockchain": "ARC-TESTNET",
+    "treasury": "0xcf0d101a556a79e3d673c0dad2a6e5c16d27e947",
+    "treasuryDeployBlock": 66509127
+  },
+  "mainnet": {
+    "chainId": 5042,
+    "cctpDomain": 26,
+    "rpcPublic": "https://rpc.mainnet.arc.io",
+    "explorer": "https://explorer.arc.io",
+    "tokens": {
+      "USDC": "0x3600000000000000000000000000000000000000",
+      "EURC": "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
+      "USYC": "0x8a5D989Bbb96929F689B0200f435f53dA42bF490"
+    },
+    "cctp": {
+      "tokenMessengerV2": "0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d",
+      "messageTransmitterV2": "0x81D40F21F12A8F0E3252Bccb954D722d4c464B64",
+      "irisApi": "https://iris-api.circle.com"
+    },
+    "gateway": {
+      "wallet": "0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE",
+      "minter": "0x2222222d7164433c4C09B0b0D809a9b52C04C205",
+      "api": null,
+      "x402Network": "eip155:5042"
+    },
+    "usyc": {
+      "teller": "0x51A8CE47dC08ba5CD19c7aa84EA6fD6664f60f9b",
+      "entitlements": "0xb69ecb156Dc0028198028c501340d5367845ca72",
+      "oracle": "0x4BC8d5aCD3d040d2903dD9C5B7048520c6ff537A"
+    },
+    "erc8004": null,
+    "earnKitChain": null,
+    "appKitChain": null,
+    "circleBlockchain": "ARC",
+    "treasury": null,
+    "treasuryDeployBlock": null
+  },
+  "destinations": {
+    "baseSepolia": {
+      "chainId": 84532,
+      "cctpDomain": 6,
+      "rpcPublic": "https://sepolia.base.org",
+      "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "messageTransmitterV2": "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275"
+    }
+  }
+}
