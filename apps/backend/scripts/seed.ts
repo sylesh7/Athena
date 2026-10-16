@@ -20,9 +20,9 @@ async function post(path: string, body: unknown) {
 const payees = [
   { slug: "vendor:hosting", name: "Northwind Hosting", kind: "vendor", category: "VENDOR", email: "billing@northwind.example" },
   { slug: "vendor:design", name: "Pixel Studio", kind: "vendor", category: "VENDOR", email: "ar@pixelstudio.example" },
-  { slug: "contractor:alex", name: "Alex Rivera (contractor)", kind: "contractor", category: "CONTRACTOR", email: "alex@example.com" },
+  { slug: "contractor:alex", name: "Alex Rivera", kind: "contractor", category: "CONTRACTOR", email: "alex@example.com" },
   { slug: "service:eurusd", name: "EUR/USD rate feed (x402)", kind: "service", category: "SERVICES" },
-  { slug: "vendor:saas-analytics", name: "Plotline Analytics (subscription)", kind: "vendor", category: "SUBSCRIPTION", email: "billing@plotline.example" },
+  { slug: "vendor:saas-analytics", name: "Plotline Analytics", kind: "vendor", category: "SUBSCRIPTION", email: "billing@plotline.example" },
 ] as const;
 for (const p of payees) await post("/payees", { ...p, token: "USDC", domain: 26, account: addr(p.slug), perTxCap: "500" });
 
