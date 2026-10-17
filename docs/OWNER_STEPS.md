@@ -135,66 +135,40 @@ explain it.
 
 ---
 
-## 3. Deploy so judges can reach it (30–45 min)
+## 3. Deployment (done)
 
-Right now everything runs on your PC. A judge clicking your link sees nothing. You have both CLIs installed
-(`vercel`, `railway`) and a Vercel project already linked (`athena3`).
+Both halves are public:
 
-### 3a. Backend → Railway (two services from the same repo: API and worker)
+| Part | Where | URL |
+|---|---|---|
+| Frontend | Vercel project `athena` (root directory `frontend`, Git-linked, every push to `main` deploys) | <https://athena-rho-sandy.vercel.app> |
+| Backend (API + worker) | Render web service `athena-backend` (free plan, Docker, auto-deploys on push to `main`) | <https://athena-backend-1xua.onrender.com> |
 
-**Known gap:** `railway.json` still points at `backend/Dockerfile` from the old project, and the new backend
-(`apps/backend`) has **no Dockerfile yet**. Ask me: *"create the Dockerfile for the backend"* — it is a 10-minute job for
-me; then continue here.
+The `…-sylesh7s-projects.vercel.app` aliases are behind Vercel login — don't share those.
 
-Once the Dockerfile exists:
+### 3a. Backend → Render
 
-1. <https://railway.app> → New Project → **Deploy from GitHub repo** → `sylesh7/Athena`.
-2. Create **two services** from it:
-   - **api** — start command: `pnpm --filter @athena/backend api`
-   - **worker** — start command: `pnpm --filter @athena/backend worker`
-3. On **both**, set these variables (copy the **values** from `apps/backend/.env.local`; never commit them):
-   `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NETWORK=testnet`, `RPC_URL`, `RPC_URL_FALLBACK`,
-   `TREASURY_ADDRESS`, `TREASURY_DEPLOY_BLOCK`, `ADMIN_ADDRESS`, `APPROVER_ADDRESS`.
-4. **api only:** `ADMIN_API_KEY`, `COLLECTIONS_ADDRESS`, `API_PORT` (Railway sets `PORT`; if needed use that),
-   `CORS_ORIGIN=https://<your-vercel-url>`, `PUBLIC_BASE_URL=https://<api-railway-url>`, `FRONTEND_URL=https://<your-vercel-url>`.
-5. **worker only (these hold keys — be careful):** `OPERATOR_PK`, `YIELD_PK`, `SPEND_PK`, `COLLECTIONS_PK`, `VALIDATOR_PK`,
-   `RELAYER_PK`, `FX_WALLET_ID`, `FX_WALLET_ADDRESS`, `CIRCLE_API_KEY`, `CIRCLE_ENTITY_SECRET`, `LLM_PROVIDER=openai`,
-   `OPENAI_API_KEY`, `PLANNER_MODEL=gpt-4o-mini`, `EXTRACTOR_MODEL=gpt-4o-mini`, `LLM_BUDGET_USD=4`, `LLM_DAILY_BUDGET_USD=0.5`,
-   `ERC8004_AGENT_ID=897363`, `SERVICE_URLS=https://<api-railway-url>/services/eurusd`, `TELEGRAM_BOT_TOKEN`,
-   `TELEGRAM_CHAT_ID`, `DRY_RUN=false`, `OPERATOR_ENABLED=true`, `CYCLE_CRON=*/15 * * * *`.
-   (Use the exact variable names that are in your local `.env.local` — if one is missing here, copy it from there.
-   Simplest and safest: copy **every** variable from `apps/backend/.env.local` to the **worker**, and only the non-key ones
-   to the **api**. The tuning variables — `REVEAL_DEADLINE_BLOCKS`, `FORECAST_HORIZON_DAYS`, `STRESS_*`, `YIELD_*`,
-   `EARLY_PAY_MARGIN_BPS`, `FX_MAX_DEVIATION_BPS` — belong on the worker too. `ANTHROPIC_API_KEY` stays empty.)
-6. **Keeper (optional, best on a different machine/account):** `KEEPER_PK` + common vars, start command `pnpm --filter @athena/backend keeper`.
-7. **Never run the worker locally AND on Railway at the same time** against the same database/keys — stop your local worker
-   first. (A database lock prevents two simultaneous cycles, but two workers still double up on triggers.)
-8. Open `https://<api-railway-url>/health` — expect `"ok":true`.
+- One image, the root `Dockerfile`; `ATHENA_PROCESS` picks what runs (`api`, `worker`, `keeper`, or `all`). Render's free
+  plan has no background-worker type, so the service runs `all`: the API on `$PORT` plus the worker (restarted if it
+  exits) in the same container — see `apps/backend/docker-start.sh`.
+- Variables are copied from `apps/backend/.env.local` (never commit them), plus `ATHENA_PROCESS=all`,
+  `CORS_ORIGIN=https://athena-rho-sandy.vercel.app,http://localhost:3000` and `FRONTEND_URL=https://athena-rho-sandy.vercel.app`.
+  `PUBLIC_BASE_URL` and `SERVICE_URLS` default to Render's `RENDER_EXTERNAL_URL`. Change variables in the Render
+  dashboard (the CLI cannot edit them).
+- **The free plan sleeps** after ~15 min without HTTP traffic — the worker sleeps with it, and the first request takes
+  ~50 s to wake it (the worker catches up on start). Before a demo or judging, open `/health` a minute early, or point a
+  free uptime pinger at `/health` every 10 min. A paid Render Background Worker would let the worker (and its keys) run
+  separately from the API again.
+- **Never run the worker locally AND on Render at the same time** against the same database/keys — stop one first.
+  (A database lock prevents two simultaneous cycles, but two workers still double up on triggers.)
+- Health: <https://athena-backend-1xua.onrender.com/health> → `"ok":true`. Logs: `render logs -r srv-db9rpd3rjlhs73fuk0o0`.
+- `railway.json` is kept for Railway (same Dockerfile); that account's trial has expired.
 
 ### 3b. Frontend → Vercel
 
-**Status (done):** the project is **`athena`** (Git-linked to `sylesh7/Athena`, root directory `frontend`, framework Next.js via
-`frontend/vercel.json`). Every push to `main` deploys to the public production domain
-**<https://athena-rho-sandy.vercel.app>** (the `…-sylesh7s-projects.vercel.app` aliases are behind Vercel login — don't share
-those). Environment variables set on Vercel (production): `NEXT_PUBLIC_ATHENA_API`, `ATHENA_API_URL` (both currently
-`http://localhost:3100` because the backend is not deployed) and `ATHENA_ADMIN_API_KEY` (server-only).
-
-**Until the backend is public:** on the deployed site, reading data, approving in the wallet and paying a receivable work (they
-run in *your browser* against your local API — Chrome asks once to *Allow* local-network access). Run Cycle, Upload Invoice,
-Issue Invoice and Add Payee do **not** work there, because they run on Vercel's servers, which cannot reach `localhost`. Do
-those on `http://localhost:3000`.
-
-**When the backend is deployed (section 3a):**
-```powershell
-cd D:\Projects\Athena\frontend
-vercel env rm NEXT_PUBLIC_ATHENA_API production --yes ; vercel env add NEXT_PUBLIC_ATHENA_API production   # https://<api-url>
-vercel env rm ATHENA_API_URL production --yes ; vercel env add ATHENA_API_URL production                    # https://<api-url>
-git commit --allow-empty -m "redeploy" ; git push origin main      # or: vercel --prod
-```
-and set the backend's `FRONTEND_URL` / `CORS_ORIGIN` to `https://athena-rho-sandy.vercel.app`.
-
-Then add the Vercel URL to the backend's `CORS_ORIGIN` (Railway api service) and redeploy it. Open the Vercel URL and check
-the Dashboard shows live numbers, not the demo data.
+Environment variables (production): `NEXT_PUBLIC_ATHENA_API` and `ATHENA_API_URL` = the Render URL above, and
+`ATHENA_ADMIN_API_KEY` (server-only). `NEXT_PUBLIC_*` values are baked in at build time, so after changing one, redeploy
+(`vercel redeploy <latest production url> --target production` from `frontend/`, or push to `main`).
 
 > `ATHENA_ADMIN_API_KEY` must **never** be named `NEXT_PUBLIC_…`. It is used only by the server routes that run a cycle,
 > upload an invoice, issue a receivable and add a payee.
@@ -225,7 +199,7 @@ Reminder emails are built and were verified against a local stub (subject, amoun
 1. <https://resend.com> → sign up → **API Keys** → create a key (starts with `re_`).
 2. Without a verified domain, Resend only delivers to **your own account email**, and only from `onboarding@resend.dev`.
    That is enough for the demo.
-3. Put in `apps\backend\.env.local` (or Railway worker variables):
+3. Put in `apps\backend\.env.local` (and the Render service variables):
    ```
    RESEND_API_KEY=re_...
    FROM_EMAIL=Athena Labs <onboarding@resend.dev>

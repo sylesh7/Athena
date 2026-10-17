@@ -2,7 +2,7 @@
 
 > Athena runs the financial side of a business as a continuous operation. It holds the company's USDC and EURC in one smart contract where budgets, approval limits, the approved payee list and a minimum operating balance are enforced on-chain. Every decision is **hash-committed before money moves and revealed on-chain afterwards**. An operator that fails to reveal is frozen by the contract.
 
-*Lineage: rebuilt from the Lepton-hackathon streaming broker. The v1 broker/provider/stream code in this repo is legacy and slated for removal (see [Repo structure](#repo-structure)).*
+**Live:** frontend [athena-rho-sandy.vercel.app](https://athena-rho-sandy.vercel.app) · API [athena-backend-1xua.onrender.com](https://athena-backend-1xua.onrender.com/health)
 
 **Deadline: October 17, 2026, 11:59 PM ET.**
 
@@ -139,7 +139,7 @@ sequenceDiagram
     end
 ```
 
-Full 16-step cycle, phase by phase: [BACKEND_README.md](BACKEND_README.md) §A6.
+Full 16-step cycle, phase by phase: [BACKEND_README.md](docs/BACKEND_README.md) §A6.
 
 ---
 
@@ -166,7 +166,7 @@ Everything reads from `packages/shared/addresses.json`. If something looks stale
 | CCTP attestation (Iris v2) | `https://iris-api-sandbox.circle.com` | `https://iris-api.circle.com` |
 | Compliance Engine | `https://api.circle.com/v1/w3s/compliance/screening/addresses` | same host, mainnet chain codes |
 
-CCTP destination domains: Ethereum/Sepolia `0` · Avalanche `1` · OP `2` · Arbitrum `3` · Base/Base Sepolia `6` · Polygon `7` · Arc `26`. Full tables incl. USYC Teller/Entitlements/Oracle: [BACKEND_README.md](BACKEND_README.md) §A7.
+CCTP destination domains: Ethereum/Sepolia `0` · Avalanche `1` · OP `2` · Arbitrum `3` · Base/Base Sepolia `6` · Polygon `7` · Arc `26`. Full tables incl. USYC Teller/Entitlements/Oracle: [BACKEND_README.md](docs/BACKEND_README.md) §A7.
 
 ⚠️ Old material uses `rpc.testnet.arc.network` and `testnet.arcscan.app`. Current docs use the `arc.io` domains above; old URLs are aliases — don't hardcode them. Never commit an RPC URL that embeds an auth token (the v1 `shared/addresses.json` did).
 
@@ -210,7 +210,7 @@ Carried over from v1: landing page (`/`), Nav, layout, global styles, `lib/wagmi
 | 5 | **Receivables** `/receivables` | AR list with dunning stage, issue new receivable. Public `/pay/[receivableId]` page for customers | Customer connects wallet → `approve` + `payReceivable` |
 | 6 | **Metrics** `/metrics` | All traction numbers (mainnet first), daily series, yield vaults/positions, cross-chain transfer stages (burn → attest → mint) | — |
 
-Rules: **no endpoint moves treasury money** — the frontend only reads, uploads, queues, or relays an approver wallet signature on an already-committed decision. All amounts arrive as strings of atomic units; the UI divides by `1_000_000`. One SSE client on `GET /events/stream` drives live updates across pages. Detail: [FRONTEND_README.md](FRONTEND_README.md).
+Rules: **no endpoint moves treasury money** — the frontend only reads, uploads, queues, or relays an approver wallet signature on an already-committed decision. All amounts arrive as strings of atomic units; the UI divides by `1_000_000`. One SSE client on `GET /events/stream` drives live updates across pages. Detail: [FRONTEND_README.md](docs/FRONTEND_README.md).
 
 ## API surface (port 3100)
 
@@ -223,43 +223,48 @@ Rules: **no endpoint moves treasury money** — the frontend only reads, uploads
 | Receivables | `GET /receivables` · `GET /receivables/:id` · `POST /receivables` (registers on-chain) · `GET /pay/:receivableId` (x402 link) |
 | Metrics | `GET /metrics` · `GET /yield/vaults` · `GET /yield/positions` · `GET /crosschain` |
 
-Kept from v1: `GET /logs`, `GET /compliance/:address`, `GET /system-health`. Replaced: the broker, provider agents, stream loop, MCP quality monitor and `AthenaCommit.sol`. Contract-signed actions (`approveEscalation`, `approvePayee`) need no backend endpoint, but the indexer must ingest `DecisionEscalated` and `PayeeProposed` to populate the tables. Full list: [BACKEND_README.md](BACKEND_README.md) Phase 40.
+Contract-signed actions (`approveEscalation`, `approvePayee`) need no backend endpoint, but the indexer must ingest `DecisionEscalated` and `PayeeProposed` to populate the tables. Full list: [BACKEND_README.md](docs/BACKEND_README.md) Phase 40.
 
 ## Documents in this repo
 
 | File | Covers |
 |---|---|
 | `README.md` | This file — index, pitch, shared facts, roadmap, submission |
-| `BACKEND_README.md` | Phases 0–47: contract, worker, AP/AR, decision engine, yield, cross-chain, API, MCP, metrics, mainnet, troubleshooting |
-| `FRONTEND_README.md` | The six pages, state, SSE, wallet flows |
-| `backend/README.md` | **Legacy v1** (broker/stream) — to be removed |
+| `docs/BACKEND_README.md` | Phases 0–47: contract, worker, AP/AR, decision engine, yield, cross-chain, API, MCP, metrics, mainnet, troubleshooting |
+| `docs/FRONTEND_README.md` | The six pages, state, SSE, wallet flows |
+| `docs/SETUP.md` | One-time setup: Supabase, keys, deploy, bootstrap, first run |
+| `docs/OWNER_STEPS.md` | Steps only the owner can do (wallets, accounts, submission) |
+| `docs/DEMO_SCRIPT.md` · `docs/demo/` | Live demo script and the demo invoice PDFs |
+| `docs/scenarios.md` | Generated report of the live testnet scenarios |
+| `apps/backend/README.md` | Backend processes, commands and env |
 
 ---
 
 ## Repo structure
 
-Target layout (`pnpm` workspaces):
+`pnpm` workspaces (`packages/shared`, `apps/*`); the frontend is a separate npm project deployed on Vercel.
 
 ```
 athena/
 ├── packages/
 │   ├── contracts/      Foundry: AthenaTreasury.sol, ITokenMessengerV2, tests, Deploy/Configure scripts
+│   │                   (lib/openzeppelin-contracts is a git submodule)
 │   └── shared/         addresses.json, abis/, money.ts, ids.ts, canonical.ts, action.ts, categories.ts
 ├── apps/
-│   ├── backend/        worker.ts + api.ts: indexer, snapshot, forecast, ingest, validate, payees,
-│   │                   policy, planner, decisions, escalations, yield, gateway, cctp, fx, ar,
-│   │                   services, reputation, metrics, cycle, keeper
-│   └── mcp/            read-only audit MCP server
+│   └── backend/        src/worker.ts + src/api.ts + src/keeper.ts: indexer, snapshot, forecast, ingest, validate,
+│                       payees, policy, planner, decisions, escalations, yield, gateway, cctp, fx, ar, services,
+│                       reputation, metrics, cycle; src/mcp/ read-only audit MCP server;
+│                       scripts/ bootstrap, keys, seed, scenarios, traction, demo invoices
+├── frontend/           Next.js console (Vercel)
 ├── supabase/migrations/
-├── scripts/            wallets/ seed/ scenarios/ traction/
-└── frontend/           Next.js (6 pages)
+├── docs/
+├── Dockerfile          backend image (ATHENA_PROCESS = api | worker | keeper | all)
+└── railway.json
 ```
-
-**Current state:** the tree is still v1 — `backend/` (broker, providers, stream loop, MCP monitor, CCTP payout), `contracts/` (`AthenaCommit.sol`), `shared/`, `frontend/`. Migrating to the layout above is the first build task; only `GET /logs`, `/compliance/:address`, `/system-health`, the landing page, Nav, layout and `lib/wagmi.ts` carry over.
 
 ## Build roadmap
 
-Each phase ends with an exit check; don't start the next until it passes. Detail in [BACKEND_README.md](BACKEND_README.md).
+Each phase ends with an exit check; don't start the next until it passes. Detail in [BACKEND_README.md](docs/BACKEND_README.md).
 
 | Block | Phases | Outcome |
 |---|---|---|
@@ -313,7 +318,7 @@ Traction is reported plainly: Athena operates **the team's own operations** ("N 
 | x402 "No Gateway batching option for eip155:5042002" | Middleware `facilitatorUrl` defaulted to mainnet |
 | Blocked on a payment | `PayeeCoolingDown`/`PayeeNotActive` — expected; the obligation re-plans |
 
-More in [BACKEND_README.md](BACKEND_README.md) Part C.
+More in [BACKEND_README.md](docs/BACKEND_README.md) Part C.
 
 ## Submission checklist
 

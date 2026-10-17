@@ -18,7 +18,7 @@ export class SignatureError extends Error {
   }
 }
 
-/** Exact message the frontend signs. Keep in sync with FRONTEND_README. */
+/** Exact message the frontend signs. Keep in sync with docs/FRONTEND_README.md. */
 export const signedMessage = (a: Omit<SignedAction, "signature">): string =>
   `Athena review\naction: ${a.action}\ntarget: ${a.target}\nverdict: ${a.verdict}\nnonce: ${a.nonce}\nissuedAt: ${a.issuedAt}`;
 

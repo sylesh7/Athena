@@ -1,6 +1,6 @@
 # @athena/backend — treasury worker, API and keeper
 
-Implements the Athena treasury backend (see the root README and BACKEND_README phases). Three entrypoints:
+Implements the Athena treasury backend (see the root README and docs/BACKEND_README.md phases). Three entrypoints:
 
 | Process | Command | Holds keys? | Does |
 |---|---|---|---|
