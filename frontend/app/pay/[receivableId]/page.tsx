@@ -1,21 +1,25 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import Nav from "@/components/Nav";
 import Amount from "@/components/Amount";
 import TxLink from "@/components/TxLink";
 import { getReceivables, type Receivable } from "@/lib/api";
-import { useAccount } from "wagmi";
+import { useAccount, usePublicClient, useWriteContract } from "wagmi";
+import { erc20Abi, treasuryAbi, treasuryAddress, errorText, TOKEN_ADDRESS } from "@/lib/treasury";
 
 type Step = "idle" | "approving" | "paying" | "done" | "error";
 
-export default function PayPage({ params }: { params: Promise<{ receivableId: string }> }) {
-  const { receivableId } = use(params);
+export default function PayPage() {
+  const { receivableId } = useParams<{ receivableId: string }>();
   const [receivable, setReceivable] = useState<Receivable | null>(null);
   const [step, setStep] = useState<Step>("idle");
   const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { address, isConnected } = useAccount();
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
 
   useEffect(() => {
     getReceivables().then((list) => {
@@ -25,22 +29,33 @@ export default function PayPage({ params }: { params: Promise<{ receivableId: st
   }, [receivableId]);
 
   async function handlePay() {
-    if (!isConnected) return;
+    if (!isConnected || !address || !publicClient || !receivable) return;
     setError(null);
 
     try {
-      // Step 1: approve
+      const treasury = await treasuryAddress();
+      const token = TOKEN_ADDRESS[receivable.token];
+      const amount = BigInt(receivable.amount);
+      const id = receivableId as `0x${string}`;
+
+      // Step 1: approve the treasury to pull exactly this amount (skipped if the allowance already covers it)
       setStep("approving");
-      await new Promise((r) => setTimeout(r, 1200)); // simulate wallet prompt
+      const allowance = await publicClient.readContract({ address: token, abi: erc20Abi, functionName: "allowance", args: [address, treasury] });
+      if (allowance < amount) {
+        const approveHash = await writeContractAsync({ address: token, abi: erc20Abi, functionName: "approve", args: [treasury, amount] });
+        await publicClient.waitForTransactionReceipt({ hash: approveHash });
+      }
 
-      // Step 2: payReceivable
+      // Step 2: payReceivable — simulated first so a revert (wrong wallet, already paid) never reaches the wallet prompt
       setStep("paying");
-      await new Promise((r) => setTimeout(r, 1800)); // simulate tx
+      await publicClient.simulateContract({ address: treasury, abi: treasuryAbi, functionName: "payReceivable", args: [id, amount], account: address });
+      const hash = await writeContractAsync({ address: treasury, abi: treasuryAbi, functionName: "payReceivable", args: [id, amount] });
+      await publicClient.waitForTransactionReceipt({ hash });
 
-      setTxHash("0xsim_pay_tx_" + receivableId.slice(-6));
+      setTxHash(hash);
       setStep("done");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Transaction failed");
+      setError(errorText(e));
       setStep("error");
     }
   }

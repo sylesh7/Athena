@@ -6,8 +6,15 @@ import Amount from "@/components/Amount";
 import StatusBadge from "@/components/StatusBadge";
 import {
   getTreasuryOverview, triggerCycle,
-  type TreasuryOverview, type SSEEvent, MOCK_FEED, formatUnits,
+  type TreasuryOverview, type SSEEvent, API, formatUnits,
 } from "@/lib/api";
+
+const FEED_TYPES = [
+  "cycle.step", "decision.committed", "decision.executed", "decision.revealed", "decision.escalated", "escalation.resolved",
+  "invoice.validated", "invoice.held", "invoice.resolved", "document.received", "payment.in", "crosschain.stage",
+  "audit.arrears", "audit.cleared", "payee.blocked", "customer.blocked", "inflow.unattributed",
+];
+const sh = (v: unknown) => { const s = String(v ?? ""); return s.length > 14 ? `${s.slice(0, 10)}…` : s; };
 
 function timeSince(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -23,22 +30,38 @@ function feedLabel(type: string) {
 
 function feedMsg(e: SSEEvent): string {
   const d = e.data as Record<string, string>;
-  if (e.type === "decision.revealed") return `Revealed: ${d.payee} · ${formatUnits(d.amount)} ${d.token}`;
-  if (e.type === "decision.committed") return `Committed: ${d.payee} · ${formatUnits(d.amount)} ${d.token}`;
-  if (e.type === "decision.escalated") return `Escalated: ${d.payee} · ${d.reason}`;
-  if (e.type === "cycle.step") return `Cycle step: ${d.step} — ${d.status}`;
-  if (e.type === "payment.in") return `Payment received: ${d.from} · ${formatUnits(d.amount)} ${d.token}`;
+  if (e.type === "decision.revealed") return `Revealed decision ${sh(d.decisionId)}`;
+  if (e.type === "decision.committed") return `Committed decision ${sh(d.decisionId)} before acting`;
+  if (e.type === "decision.executed") return `Executed decision ${sh(d.decisionId)}`;
+  if (e.type === "decision.escalated") return `Escalated to a human: ${sh(d.decisionId)}`;
+  if (e.type === "escalation.resolved") return `Escalation ${d.status}: ${sh(d.decisionId)}`;
+  if (e.type === "cycle.step") return `Cycle step: ${d.step}${String(d.ok) === "false" ? " — failed" : ""}`;
+  if (e.type === "payment.in") return `Payment received: ${formatUnits(d.amount ?? "0")} USDC`;
+  if (e.type === "invoice.held") return `Invoice held: ${d.reason}`;
+  if (e.type === "invoice.validated") return `Invoice validated (${d.matchStatus})`;
   return JSON.stringify(d);
 }
 
 export default function DashboardPage() {
   const [data, setData] = useState<TreasuryOverview | null>(null);
-  const [feed, setFeed] = useState<SSEEvent[]>(MOCK_FEED);
+  const [feed, setFeed] = useState<SSEEvent[]>([]);
   const [running, setRunning] = useState(false);
   const [cycleMsg, setCycleMsg] = useState<string | null>(null);
 
   useEffect(() => {
     getTreasuryOverview().then(setData);
+    // Live feed from the API's Server-Sent Events; refresh the numbers (debounced) when money-relevant events arrive.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const es = new EventSource(`${API}/events/stream`);
+    for (const type of FEED_TYPES) {
+      es.addEventListener(type, (ev) => {
+        let data: Record<string, unknown> = {};
+        try { data = JSON.parse((ev as MessageEvent).data); } catch { /* keep empty */ }
+        setFeed((f) => [{ type, data, ts: Date.now() }, ...f].slice(0, 40));
+        if (type !== "cycle.step") { clearTimeout(timer); timer = setTimeout(() => getTreasuryOverview().then(setData), 3000); }
+      });
+    }
+    return () => { clearTimeout(timer); es.close(); };
   }, []);
 
   const usdc = data?.balances.find((b) => b.token === "USDC");
@@ -47,8 +70,8 @@ export default function DashboardPage() {
   async function handleCycle(dry: boolean) {
     setRunning(true);
     setCycleMsg(null);
-    await triggerCycle(dry);
-    setCycleMsg(dry ? "Dry-run complete — no transactions sent." : "Cycle triggered. Events will stream below.");
+    const r = await triggerCycle(dry);
+    setCycleMsg(r.ok ? (dry ? "Dry run queued — no transactions will be sent. Events stream below." : "Cycle queued. Events will stream below.") : `Could not start the cycle: ${r.message}`);
     setRunning(false);
   }
 

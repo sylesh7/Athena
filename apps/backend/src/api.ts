@@ -98,9 +98,13 @@ app.get("/invoices", wrap(async (req, res) => {
   const p = page.parse(req.query);
   const status = typeof req.query.status === "string" ? req.query.status : null;
   const rows = await q(
-    `select id, invoice_number, payee_id, token, total, due_date, status, hold_reason, match_status, created_at
-     from invoices where ($1::text is null or status = $1) and ($2::timestamptz is null or created_at < $2)
-     order by created_at desc limit $3`,
+    // Early holds (unknown vendor, bad amount…) never reach normalization, so fall back to what the model extracted for DISPLAY only.
+    `select i.id, coalesce(i.invoice_number, i.extracted->>'invoiceNumber') as invoice_number, i.payee_id, i.token, i.total, i.due_date, i.status, i.hold_reason,
+            i.match_status, i.created_at, coalesce(p.name, i.extracted->>'vendorName') as payee_name, i.extracted->>'total' as printed_total,
+            i.extracted->>'currency' as printed_currency
+     from invoices i left join payees p on p.id = i.payee_id
+     where ($1::text is null or i.status = $1) and ($2::timestamptz is null or i.created_at < $2)
+     order by i.created_at desc limit $3`,
     [status, p.cursor ?? null, p.limit],
   );
   res.json({ items: rows, nextCursor: rows.length === p.limit ? rows[rows.length - 1].created_at : null });
@@ -153,7 +157,11 @@ app.get("/payees/:id", wrap(async (req, res) => {
 app.get("/escalations", wrap(async (req, res) => {
   const status = typeof req.query.status === "string" ? req.query.status : null;
   const rows = await q(
-    `select e.*, d.kind, d.action, d.record_json from escalations e join decisions d using (decision_id)
+    `select e.*, d.kind, d.action, d.record_json, d.created_at as decision_created_at, p.name as payee_name,
+            coalesce(o.token, 'USDC') as token, coalesce(d.action->>'amount', o.amount::text, '0') as amount
+     from escalations e join decisions d using (decision_id)
+     left join obligations o on o.obligation_id = d.obligation_id
+     left join payees p on p.payee_id = d.action->>'payeeId'
      where ($1::text is null or e.status = $1) order by e.expires_at`, [status]);
   res.json({ items: rows.map((r) => ({ ...r, record: JSON.parse(r.record_json), record_json: undefined })) });
 }));
@@ -169,9 +177,14 @@ app.get("/decisions", wrap(async (req, res) => {
   const kind = typeof req.query.kind === "string" ? req.query.kind : null;
   const state = typeof req.query.state === "string" ? req.query.state : null;
   const rows = await q(
-    `select decision_id, cycle_id, seq, kind, obligation_id, state, revealed, commit_tx, execute_tx, reveal_tx, scenario, created_at
-     from decisions where ($1::text is null or kind = $1) and ($2::text is null or state = $2)
-       and ($3::timestamptz is null or created_at < $3) order by created_at desc limit $4`,
+    `select d.decision_id, d.cycle_id, d.seq, d.kind, d.obligation_id, d.state, d.revealed, d.commit_tx, d.execute_tx, d.reveal_tx, d.scenario, d.created_at,
+            d.decision_hash, p.name as payee_name, o.token as token, coalesce(d.action->>'amount', o.amount::text, '0') as amount,
+            coalesce(d.record_json::jsonb->'planner'->>'rationale', d.record_json::jsonb->>'rationale') as rationale
+     from decisions d
+     left join obligations o on o.obligation_id = d.obligation_id
+     left join payees p on p.payee_id = d.action->>'payeeId' or p.id = o.payee_id
+     where ($1::text is null or d.kind = $1) and ($2::text is null or d.state = $2)
+       and ($3::timestamptz is null or d.created_at < $3) order by d.created_at desc limit $4`,
     [kind, state, p.cursor ?? null, p.limit],
   );
   res.json({ items: rows.map((r) => ({ ...r, explorer: { commit: txUrl(r.commit_tx), execute: txUrl(r.execute_tx), reveal: txUrl(r.reveal_tx) } })),

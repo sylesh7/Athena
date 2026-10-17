@@ -56,22 +56,56 @@ async function drain() {
   }
 }
 
-async function listen() {
-  const c = new pg.Client({ connectionString: commonCfg.DATABASE_URL });
+// LISTEN is a long-lived connection. On a flaky network it can go half-open WITHOUT emitting an error, after which the worker
+// silently stops hearing manual triggers and payment/escalation events. So: heartbeat it, and reconnect on any failure.
+let listenClient: pg.Client | null = null;
+let listenRetry = 0;
+
+function onNotification(m: pg.Notification) {
+  if (!m.payload) return;
+  let p: { type?: string; trigger?: string; dryRun?: boolean } = {};
+  try { p = JSON.parse(m.payload); } catch { return; }
+  if (m.channel === "athena_trigger") return request(p.trigger ?? "manual", Boolean(p.dryRun), 0);
+  // Event triggers (Phase 37.2): invoice → 60s, payment in → 60s, escalation resolved → 30s.
+  if (p.type === "invoice.validated") request("invoice", false, 60_000);
+  else if (p.type === "payment.in") request("payment_in", false, 60_000);
+  else if (p.type === "escalation.resolved") request("escalation_resolved", false, 30_000);
+}
+
+async function listen(): Promise<void> {
+  const old = listenClient;
+  listenClient = null;
+  if (old) { old.removeAllListeners(); old.end().catch(() => undefined); }
+  const c = new pg.Client({ connectionString: commonCfg.DATABASE_URL, keepAlive: true, connectionTimeoutMillis: 15_000 });
+  const lost = (why: string) => {
+    if (listenClient !== c) return; // already replaced
+    listenClient = null;
+    const delay = Math.min(30_000, 1_000 * 2 ** listenRetry++);
+    log.warn({ why, retryInMs: delay }, "LISTEN connection lost — reconnecting");
+    setTimeout(() => listen().catch((e) => { log.error({ err: String(e) }, "LISTEN reconnect failed"); lost("reconnect failed"); }), delay);
+  };
+  c.on("error", (e) => lost(String(e)));
+  c.on("end", () => lost("connection ended"));
   await c.connect();
   await c.query("LISTEN athena_events");
   await c.query("LISTEN athena_trigger");
-  c.on("notification", (m) => {
-    if (!m.payload) return;
-    let p: { type?: string; trigger?: string; dryRun?: boolean } = {};
-    try { p = JSON.parse(m.payload); } catch { return; }
-    if (m.channel === "athena_trigger") return request(p.trigger ?? "manual", Boolean(p.dryRun), 0);
-    // Event triggers (Phase 37.2): invoice → 60s, payment in → 60s, escalation resolved → 30s.
-    if (p.type === "invoice.validated") request("invoice", false, 60_000);
-    else if (p.type === "payment.in") request("payment_in", false, 60_000);
-    else if (p.type === "escalation.resolved") request("escalation_resolved", false, 30_000);
-  });
-  c.on("error", (e) => { log.error({ err: String(e) }, "LISTEN connection lost — exiting so the host restarts us"); process.exit(1); });
+  c.on("notification", onNotification);
+  listenClient = c;
+  listenRetry = 0;
+}
+
+/** Every 30 s prove the LISTEN connection is alive (a query round-trip with a 10 s deadline); otherwise force a reconnect. */
+function startListenHeartbeat() {
+  setInterval(async () => {
+    const c = listenClient;
+    if (!c) return;
+    try {
+      await Promise.race([c.query("select 1"), new Promise((_, rej) => setTimeout(() => rej(new Error("heartbeat timeout")), 10_000))]);
+    } catch (e) {
+      log.warn({ err: String(e) }, "LISTEN heartbeat failed — reconnecting");
+      c.emit("error", e instanceof Error ? e : new Error(String(e)));
+    }
+  }, 30_000).unref();
 }
 
 async function main() {
@@ -81,6 +115,7 @@ async function main() {
   startIndexerLoop(2_000);
   cron.schedule(w.CYCLE_CRON, () => request("schedule", false, 0));
   await listen();
+  startListenHeartbeat();
   setInterval(() => recoverDecisions().catch((e) => log.error({ err: String(e) }, "recover tick failed")), 60_000);
   log.info({ treasury: TREASURY, network: commonCfg.NETWORK, cron: w.CYCLE_CRON, enabled: w.OPERATOR_ENABLED }, "Athena worker running");
   void pool;

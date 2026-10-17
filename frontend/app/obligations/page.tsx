@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useAccount, useSignMessage } from "wagmi";
 import Nav from "@/components/Nav";
 import Amount from "@/components/Amount";
 import StatusBadge from "@/components/StatusBadge";
-import { getObligations, getHeldInvoices, type Obligation, type Invoice, formatUnits } from "@/lib/api";
+import { getObligations, getHeldInvoices, signedMessage, postSigned, type Obligation, type Invoice, formatUnits } from "@/lib/api";
 
 const STATUS_FILTERS = ["all", "pending", "scheduled", "executed", "held", "escalated"];
 
@@ -25,6 +26,25 @@ export default function ObligationsPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [filter, setFilter] = useState("all");
   const [selectedInv, setSelectedInv] = useState<Invoice | null>(null);
+  const { isConnected } = useAccount();
+  const { signMessageAsync } = useSignMessage();
+  const [resolving, setResolving] = useState(false);
+  const [resolveMsg, setResolveMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // EIP-191 signed by an APPROVER wallet; the API checks the role on-chain, freshness and one-time nonce.
+  async function resolve(verdict: "release" | "reject") {
+    if (!selectedInv) return;
+    setResolving(true); setResolveMsg(null);
+    try {
+      const msg = { action: "invoice.resolve", target: selectedInv.id, verdict, nonce: crypto.randomUUID(), issuedAt: new Date().toISOString() };
+      const signature = await signMessageAsync({ message: signedMessage(msg) });
+      const r = await postSigned(`/invoices/${selectedInv.id}/resolve`, { verdict, nonce: msg.nonce, issuedAt: msg.issuedAt, signature });
+      setResolveMsg({ ok: r.ok, text: r.ok ? (verdict === "release" ? "Released — the worker will re-run matching." : "Rejected.") : r.message });
+      if (r.ok) { setSelectedInv(null); getHeldInvoices().then(setInvoices); }
+    } catch (e) {
+      setResolveMsg({ ok: false, text: e instanceof Error ? e.message.split("\n")[0]!.slice(0, 160) : "Signing failed" });
+    } finally { setResolving(false); }
+  }
 
   useEffect(() => {
     getObligations().then(setObligations);
@@ -171,15 +191,14 @@ export default function ObligationsPage() {
                       </div>
                     ))}
                     <div style={{ marginTop: "1.4rem", display: "flex", gap: ".6rem", flexWrap: "wrap" }}>
-                      <button className="btn-solid" style={{ padding: ".65rem 1.2rem", fontSize: ".68rem" }}>
-                        <span>Release</span>
+                      <button className="btn-solid" style={{ padding: ".65rem 1.2rem", fontSize: ".68rem" }} disabled={!isConnected || resolving} onClick={() => resolve("release")}>
+                        <span>{resolving ? "Signing…" : "Release"}</span>
                       </button>
-                      <button className="btn-ghost" style={{ padding: ".65rem 1.2rem" }}>
+                      <button className="btn-ghost" style={{ padding: ".65rem 1.2rem" }} disabled={!isConnected || resolving} onClick={() => resolve("reject")}>
                         <span>Reject</span>
                       </button>
-                      <button className="btn-ghost" style={{ padding: ".65rem 1.2rem" }}>
-                        <span>Link PO</span>
-                      </button>
+                      {!isConnected && <span style={{ color: "var(--muted-2)", fontSize: ".68rem", alignSelf: "center" }}>Connect the approver wallet to act</span>}
+                      {resolveMsg && <div style={{ width: "100%", color: resolveMsg.ok ? "#6bff9f" : "var(--rust-glow)", fontSize: ".74rem" }}>{resolveMsg.text}</div>}
                     </div>
                     <div style={{ marginTop: ".8rem", fontSize: ".65rem", color: "var(--muted-2)" }}>
                       Actions require approver wallet signature (EIP-191)

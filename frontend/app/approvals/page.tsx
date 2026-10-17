@@ -6,7 +6,8 @@ import Amount from "@/components/Amount";
 import StatusBadge from "@/components/StatusBadge";
 import TxLink from "@/components/TxLink";
 import { getEscalations, getPayees, type Escalation, type Payee, formatUnits } from "@/lib/api";
-import { useAccount } from "wagmi";
+import { useAccount, usePublicClient, useWriteContract } from "wagmi";
+import { treasuryAbi, treasuryAddress, errorText } from "@/lib/treasury";
 
 function timeLabel(iso: string) {
   return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -18,11 +19,31 @@ export default function ApprovalsPage() {
   const [payees, setPayees] = useState<Payee[]>([]);
   const [selectedEsc, setSelectedEsc] = useState<Escalation | null>(null);
   const { address, isConnected } = useAccount();
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ ok: boolean; text: string; tx?: string } | null>(null);
 
-  useEffect(() => {
-    getEscalations().then(setEscalations);
-    getPayees().then(setPayees);
-  }, []);
+  const refresh = () => { getEscalations().then(setEscalations); getPayees().then(setPayees); };
+  useEffect(refresh, []);
+
+  // Simulate first (a revert never reaches the wallet), then sign, then wait for the receipt and re-read from the API.
+  async function act(key: string, fn: "approveEscalation" | "rejectEscalation" | "approvePayee" | "rejectPayee" | "suspendPayee", id: string) {
+    if (!address || !publicClient) return;
+    setBusy(key); setNotice(null);
+    try {
+      const to = await treasuryAddress();
+      const args = [id as `0x${string}`] as const;
+      await publicClient.simulateContract({ address: to, abi: treasuryAbi, functionName: fn, args, account: address });
+      const hash = await writeContractAsync({ address: to, abi: treasuryAbi, functionName: fn, args });
+      await publicClient.waitForTransactionReceipt({ hash });
+      setNotice({ ok: true, text: `${fn} confirmed on Arc.`, tx: hash });
+      setSelectedEsc(null);
+      setTimeout(refresh, 4000); // the indexer picks the event up within a few seconds
+    } catch (e) {
+      setNotice({ ok: false, text: errorText(e) });
+    } finally { setBusy(null); }
+  }
 
   const pending = escalations.filter((e) => e.status === "pending");
   const pendingPayees = payees.filter((p) => p.status === "pending_activation");
@@ -47,6 +68,12 @@ export default function ApprovalsPage() {
           {!isConnected && (
             <div style={{ padding: "1rem 1.2rem", border: "1px solid var(--gold)", color: "var(--gold-glow)", fontSize: ".78rem", marginBottom: "1.6rem" }}>
               Connect your approver wallet to sign escalation approvals and payee activations on-chain.
+            </div>
+          )}
+
+          {notice && (
+            <div style={{ padding: ".8rem 1rem", border: `1px solid ${notice.ok ? "#1e6a3a" : "var(--rust)"}`, color: notice.ok ? "#6bff9f" : "var(--rust-glow)", fontSize: ".78rem", marginBottom: "1.2rem" }}>
+              {notice.text} {notice.tx && <TxLink hash={notice.tx} label="View transaction →" />}
             </div>
           )}
 
@@ -119,11 +146,11 @@ export default function ApprovalsPage() {
                       <div style={{ marginTop: "1.4rem" }}>
                         {isConnected ? (
                           <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap" }}>
-                            <button className="btn-solid" style={{ padding: ".65rem 1.2rem", fontSize: ".68rem" }}>
-                              <span>Approve Escalation</span>
+                            <button className="btn-solid" style={{ padding: ".65rem 1.2rem", fontSize: ".68rem" }} disabled={busy !== null} onClick={() => act("esc-ok", "approveEscalation", selectedEsc.decisionId)}>
+                              <span>{busy === "esc-ok" ? "Waiting for wallet…" : "Approve Escalation"}</span>
                             </button>
-                            <button className="btn-ghost" style={{ padding: ".65rem 1.2rem" }}>
-                              <span>Reject</span>
+                            <button className="btn-ghost" style={{ padding: ".65rem 1.2rem" }} disabled={busy !== null} onClick={() => act("esc-no", "rejectEscalation", selectedEsc.decisionId)}>
+                              <span>{busy === "esc-no" ? "Waiting for wallet…" : "Reject"}</span>
                             </button>
                           </div>
                         ) : (
@@ -181,17 +208,24 @@ export default function ApprovalsPage() {
                     <td>
                       {p.status === "pending_activation" && (
                         isConnected ? (
-                          <button className="btn-solid" style={{ padding: ".35rem .8rem", fontSize: ".62rem" }}>
-                            <span>Activate</span>
-                          </button>
+                          <span style={{ display: "inline-flex", gap: ".4rem" }}>
+                            <button className="btn-solid" style={{ padding: ".35rem .8rem", fontSize: ".62rem" }} disabled={busy !== null} onClick={() => act("p-" + p.id, "approvePayee", p.id)}>
+                              <span>{busy === "p-" + p.id ? "…" : "Activate"}</span>
+                            </button>
+                            <button className="btn-ghost" style={{ padding: ".35rem .8rem" }} disabled={busy !== null} onClick={() => act("r-" + p.id, "rejectPayee", p.id)}>
+                              <span style={{ fontSize: ".62rem" }}>Reject</span>
+                            </button>
+                          </span>
                         ) : (
                           <span style={{ color: "var(--muted-2)", fontSize: ".68rem" }}>Connect wallet</span>
                         )
                       )}
                       {p.status === "active" && (
-                        <button className="btn-ghost" style={{ padding: ".35rem .8rem" }}>
-                          <span style={{ fontSize: ".62rem" }}>Suspend</span>
-                        </button>
+                        isConnected ? (
+                          <button className="btn-ghost" style={{ padding: ".35rem .8rem" }} disabled={busy !== null} onClick={() => act("s-" + p.id, "suspendPayee", p.id)}>
+                            <span style={{ fontSize: ".62rem" }}>{busy === "s-" + p.id ? "…" : "Suspend"}</span>
+                          </button>
+                        ) : <span style={{ color: "var(--muted-2)", fontSize: ".68rem" }}>Connect wallet</span>
                       )}
                       {(p.status === "draft" || p.status === "suspended") && (
                         <span style={{ color: "var(--muted-2)", fontSize: ".68rem" }}>—</span>
