@@ -173,14 +173,25 @@ Once the Dockerfile exists:
 
 ### 3b. Frontend → Vercel
 
+**Status (done):** the project is **`athena`** (Git-linked to `sylesh7/Athena`, root directory `frontend`, framework Next.js via
+`frontend/vercel.json`). Every push to `main` deploys to the public production domain
+**<https://athena-rho-sandy.vercel.app>** (the `…-sylesh7s-projects.vercel.app` aliases are behind Vercel login — don't share
+those). Environment variables set on Vercel (production): `NEXT_PUBLIC_ATHENA_API`, `ATHENA_API_URL` (both currently
+`http://localhost:3100` because the backend is not deployed) and `ATHENA_ADMIN_API_KEY` (server-only).
+
+**Until the backend is public:** on the deployed site, reading data, approving in the wallet and paying a receivable work (they
+run in *your browser* against your local API — Chrome asks once to *Allow* local-network access). Run Cycle, Upload Invoice,
+Issue Invoice and Add Payee do **not** work there, because they run on Vercel's servers, which cannot reach `localhost`. Do
+those on `http://localhost:3000`.
+
+**When the backend is deployed (section 3a):**
 ```powershell
 cd D:\Projects\Athena\frontend
-vercel link                       # choose the existing project "athena3" if asked
-vercel env add NEXT_PUBLIC_ATHENA_API production      # value: https://<api-railway-url>
-vercel env add ATHENA_ADMIN_API_KEY production        # value: the backend ADMIN_API_KEY (server-only, NOT public)
-vercel env add ATHENA_API_URL production              # value: https://<api-railway-url>
-vercel --prod
+vercel env rm NEXT_PUBLIC_ATHENA_API production --yes ; vercel env add NEXT_PUBLIC_ATHENA_API production   # https://<api-url>
+vercel env rm ATHENA_API_URL production --yes ; vercel env add ATHENA_API_URL production                    # https://<api-url>
+git commit --allow-empty -m "redeploy" ; git push origin main      # or: vercel --prod
 ```
+and set the backend's `FRONTEND_URL` / `CORS_ORIGIN` to `https://athena-rho-sandy.vercel.app`.
 
 Then add the Vercel URL to the backend's `CORS_ORIGIN` (Railway api service) and redeploy it. Open the Vercel URL and check
 the Dashboard shows live numbers, not the demo data.

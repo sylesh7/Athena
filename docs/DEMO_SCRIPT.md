@@ -29,6 +29,14 @@ splice them; never wait on screen for a cycle.
 **3. MetaMask:** network **Arc Testnet**, the **approver account** selected and **connected** to the app (click *Connect Wallet*
 once). It needs a few USDC: gas is paid in USDC, and the same wallet pays the receivable on camera.
 
+**3b. Allow the deployed site to reach your local API (one-time, important).** The links in Telegram and the email open the
+**deployed** site, `https://athena-rho-sandy.vercel.app`, whose data comes from the API on your PC (`localhost:3100`). Recent
+Chrome versions ask permission for that. Before recording: open `https://athena-rho-sandy.vercel.app/dashboard` in **Chrome**;
+when Chrome asks to *"access other apps and services on this device"* / *"look for devices on your local network"*, click
+**Allow**. If you missed the prompt, click the lock icon next to the address bar → **Site settings** → **Local network
+access** → **Allow**, then reload. If the page then shows real numbers (Free USDC, budgets), you're set. Use Chrome for the
+recording — other browsers may block this. The API and worker must be running on this PC while you record.
+
 **4. Telegram:** open your **Athena bot chat** in Telegram Desktop or Web (a separate window you can show). The escalation
 alert arrives there. If you never received one, check the worker log for `escalation notification failed`, and confirm
 `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` in `apps/backend/.env.local`.
