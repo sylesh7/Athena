@@ -223,13 +223,17 @@ export default function Nav() {
               <span className="label">APPROVALS</span>
               <span className="num">004</span>
             </Link>
+            <Link className="nav-item nav-cta" href="/receivables">
+              <span className="label">RECEIVABLES</span>
+              <span className="num">005</span>
+            </Link>
             <Link className="nav-item nav-cta" href="/metrics">
               <span className="label">METRICS</span>
-              <span className="num">005</span>
+              <span className="num">006</span>
             </Link>
             <button type="button" className="nav-item nav-cta" onClick={handleWalletClick}>
               <span className="label">{walletLabel}</span>
-              <span className="num">006</span>
+              <span className="num">007</span>
             </button>
           </>
         )}

@@ -25,17 +25,25 @@ network, so the video is recorded in **two takes** that you splice together — 
    upload of the same file is rejected as a duplicate.
 5. **Email shot (optional but impressive).** Resend only delivers to **your own Resend account email** while you use
    `onboarding@resend.dev`. About 5 minutes before recording:
-   - App → **Receivables → Issue Invoice** → *Customer Name* "Demo Customer", **Customer Email = the email you signed up to
-     Resend with**, Amount `5.00`, Due Date = 2 weeks out → **Issue**.
+   - Open the app at <http://localhost:3000>. In the **top navigation bar** click **RECEIVABLES** (5th item, between APPROVALS
+     and METRICS). On that page click the orange **ISSUE INVOICE** button (top right). A form opens. Fill:
+     *Customer Name* = `Demo Customer`; **Customer Email = the email you signed up to Resend with**; *Invoice Number* = leave
+     blank (auto); *Amount (USDC)* = `5.00`; *Due Date* = a date 2 weeks from today. Click **Issue**. You get a green
+     "Issued as a draft…" message.
    - Click **Run Cycle** (dashboard). Within ~3 min the invoice email arrives **with a PDF attached and a "Pay online" link**.
      Keep that email open in another window for the video.
 6. **Have these open in tabs/windows ready:** Dashboard, Obligations, Audit Trail, Approvals, Receivables, Metrics, your inbox.
-7. **Optional rehearsal:** do the whole flow once with `scripts/make-demo-invoice.ts test` (creates a throwaway invoice + PO):
+7. **Rehearse the whole demo once first (recommended).** The real demo PDF is single-use (a second upload is rejected as a
+   duplicate), so rehearse with a throwaway copy. Each run creates a *new* invoice number and its own PO + receipt:
    ```powershell
    cd D:\Projects\Athena\apps\backend
    pnpm exec tsx --env-file=.env.local scripts/make-demo-invoice.ts test
    ```
-   then upload the generated `docs/demo/_rehearsal-*.pdf`. Delete that file afterwards.
+   It prints the path of the file it wrote, `docs\demo\_rehearsal-PX-TEST-XXXX.pdf`. Then run sections **B and C** below exactly
+   as if recording, using that file instead of `pixel-studio-INV-DEMO-001.pdf`. Each rehearsal spends **2.50 USDC** of
+   the testnet treasury. It currently holds ~11.5 USDC with a 2 USDC operating floor, which covers **one rehearsal plus the real
+   take**. A third payment would hit the floor and be held; ask me to top it up if you want more rehearsals.
+   Delete the `_rehearsal-*.pdf` afterwards so you never upload the wrong file on camera.
 
 > The 30-second cooldown on **Run Cycle** is intentional. If you see "wait 30 seconds", wait.
 
