@@ -10,3 +10,14 @@ backend/.env
 backend/.env.local
 backend/.env.example
 *.md
+**/.env
+**/.env.*
+!**/.env.example
+Demo_videos
+brag-output
+backend
+apps/backend/test
+packages/contracts
+docs
+scripts
+supabase
