@@ -44,32 +44,41 @@ alert arrives there. If you never received one, check the worker log for `escala
 **5. Your inbox** open in another window, signed in to the **same email you registered Resend with** (with
 `onboarding@resend.dev`, Resend only delivers to that address — see section E).
 
-**6. The two invoice PDFs** (purchase orders and delivery receipts are already seeded):
+**6. The invoice PDFs — two separate sets (purchase orders and delivery receipts already seeded for each).** They are in
+`D:\Projects\Athena\docs\demo\`:
 
-| File (in `docs/demo/`) | What it is | What Athena does |
-|---|---|---|
-| `pixel-studio-INV-DEMO-001.pdf` | Pixel Studio, **2.50 USDC**, due today | Matches PO → **pays automatically** |
-| `alex-rivera-INV-DEMO-002-ESCALATE.pdf` | Alex Rivera, **7.00 USDC**, due today | Over the 6 USDC contractor limit → **escalates + Telegram** |
+| File | What Athena does |
+|---|---|
+| `REHEARSAL_1_PAYS_Pixel-Studio_2.45USDC_PX-R15251.pdf` | Matches its PO → **paid automatically** (under the limit) |
+| `REHEARSAL_2_ESCALATES_Alex-Rivera_7.71USDC_AX-R22076.pdf` | Over the 6 USDC contractor limit → **escalates → Telegram + Approvals** |
+| `DEMO_1_PAYS_Pixel-Studio_2.96USDC_PX-D11392.pdf` | Same as rehearsal 1, for the real take |
+| `DEMO_2_ESCALATES_Alex-Rivera_7.08USDC_AX-D21118.pdf` | Same as rehearsal 2, for the real take |
 
-Do **not** upload them before recording (a second upload of the same file is rejected as a duplicate). Put them somewhere easy
-to find in the file picker (e.g. the Desktop) — you will browse to them on camera. Regenerate any time:
+**Rules that bit us once — read these:**
+- **Use each file once.** Re-uploading the same file is rejected as a duplicate.
+- **Every invoice needs a different amount per vendor.** Athena holds any invoice from the same vendor with the **same total within
+  45 days** as a *probable duplicate* — even if the earlier one was only held. That is why two earlier rehearsal PDFs (both
+  2.50 USDC) were held and never paid. The generator now picks an unused amount every run.
+- **When do Telegram and email fire?** *Telegram* only when an invoice is **over a limit** (the `ESCALATES` files). A payment
+  that is within limits (the `PAYS` files) is paid silently: no Telegram, no email. *Email* is sent only for **receivables you
+  issue** (Receivables → Issue Invoice) to the customer's email — never for vendor invoices you upload.
+
+Generate a fresh set any time (new numbers, new amounts; it never touches old files' invoices):
 ```powershell
 cd D:\Projects\Athena\apps\backend
-pnpm exec tsx --env-file=.env.local scripts/make-demo-invoice.ts demo        # recreates the 2.50 USDC one
-pnpm exec tsx --env-file=.env.local scripts/make-demo-invoice.ts escalate    # recreates the 7.00 USDC one
+pnpm exec tsx --env-file=.env.local scripts/make-demo-invoice.ts all          # rehearsal pair + demo pair
+pnpm exec tsx --env-file=.env.local scripts/make-demo-invoice.ts rehearsal    # only the rehearsal pair
+pnpm exec tsx --env-file=.env.local scripts/make-demo-invoice.ts demo         # only the demo pair
 ```
+Put the files you will use somewhere easy to find in the file picker (e.g. the Desktop).
 
 **7. Do NOT pre-create the receivable.** You issue it **on camera** in Take 1 (that is the "putting the email" shot), and pay
 it in Take 2. *Fallback if you want a safety net:* pre-create a separate one named `Backup Customer` the same way and leave it.
 
-**8. Rehearse once** with throwaway copies (fresh invoice numbers each time, so no duplicate problems):
-```powershell
-pnpm exec tsx --env-file=.env.local scripts/make-demo-invoice.ts test             # 2.50 USDC payment copy
-pnpm exec tsx --env-file=.env.local scripts/make-demo-invoice.ts test-escalate    # 7.00 USDC escalation copy
-```
-They write `docs/demo/_rehearsal-*.pdf` — upload those, run sections B and C, then **delete the `_rehearsal-*.pdf` files**.
-Funds: each run pays 2.50 + 7.00 and the treasury keeps a 2 USDC floor. It holds ~24 USDC, enough for **one rehearsal and the
-real take**. Ask me to top it up if you want more.
+**8. Rehearse once with the `REHEARSAL_*` files** (and a throwaway receivable), running sections B and C exactly as if recording —
+upload **both** rehearsal PDFs in Take 1 and watch the Telegram message arrive. When it works, do the real take with the
+`DEMO_*` files. Funds: the four invoices total ~20.2 USDC and the treasury keeps a 2 USDC floor; it holds ~25 USDC, enough for
+the whole rehearsal + real take. Ask me to top it up before generating another set.
 
 > The **Run Cycle** button has a 30-second cooldown on purpose. If it says "wait 30 seconds", wait.
 
@@ -80,7 +89,7 @@ real take**. Ask me to top it up if you want more.
 | Time | Screen | Do (everything on camera) | Say |
 |---|---|---|---|
 | 0:00–0:08 | **Dashboard** (nav → TREASURY) | Point at Free USDC, budget bars, the live feed. | "This is Athena's treasury on Arc testnet — balances, budgets per category, and a live feed of every agent action." |
-| 0:08–0:30 | **OBLIGATIONS** → **Upload Invoice** | Click **Upload Invoice** → in the file picker choose `pixel-studio-INV-DEMO-001.pdf` → green banner *"Received. Extraction and validation run…"*. Click **Upload Invoice** again → choose `alex-rivera-INV-DEMO-002-ESCALATE.pdf` → banner again. | "Vendor invoices arrive as PDFs. An LLM reads them, but it only *suggests* — code validates every amount, checks for duplicates, and matches each invoice three ways against the purchase order and the delivery receipt." |
+| 0:08–0:30 | **OBLIGATIONS** → **Upload Invoice** | Click **Upload Invoice** → in the file picker choose the `DEMO_1_PAYS_…` PDF → green banner *"Received. Extraction and validation run…"*. Click **Upload Invoice** again → choose the `DEMO_2_ESCALATES_…` PDF → banner again. | "Vendor invoices arrive as PDFs. An LLM reads them, but it only *suggests* — code validates every amount, checks for duplicates, and matches each invoice three ways against the purchase order and the delivery receipt." |
 | 0:30–0:50 | **RECEIVABLES** → orange **ISSUE INVOICE** | Fill: *Customer Name* `Pay Demo`; **Customer Email** = your Resend email (type it slowly, on screen); *Amount (USDC)* `1.00`; *Due Date* two weeks out. Click **Issue** → green *"Issued as a draft…"*. | "On the receivables side I issue an invoice to a customer. Athena will register it on-chain and email it to them." |
 | 0:50–0:55 | **Dashboard** | Click **Run Cycle**. The feed starts scrolling `CYCLE STEP … ingest, validate …`. | "Now the agent runs a cycle." |
 
