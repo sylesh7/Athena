@@ -23,9 +23,13 @@ export async function intakeDocument(input: {
 
   let rawText: string | null = null;
   if (input.mime === "application/pdf") {
-    const { default: pdf } = await import("pdf-parse");
-    const text = (await pdf(input.bytes)).text.trim();
-    rawText = text.length > 20 ? text : null; // scanned PDF: leave empty, the extractor sends the PDF itself
+    // Import the library file, NOT the package root: pdf-parse@1.1.1's index.js runs a debug routine that opens its own
+    // test PDF (ENOENT on ./test/data/05-versions-space.pdf) whenever it is loaded as an ES module.
+    const mod = (await import("pdf-parse/lib/pdf-parse.js" as string)) as { default: (b: Buffer) => Promise<{ text: string }> };
+    let text = "";
+    try { text = (await mod.default(input.bytes)).text.trim(); }
+    catch { /* unparseable by the bundled pdf.js: fall through, the extractor sends the PDF itself to the model */ }
+    rawText = text.length > 20 ? text : null; // scanned/unparseable PDF: leave empty, the extractor sends the PDF itself
   } else if (input.mime.startsWith("text/") || input.mime === "application/json") {
     rawText = input.bytes.toString("utf8");
   }
