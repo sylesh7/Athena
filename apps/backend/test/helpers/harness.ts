@@ -63,7 +63,7 @@ export async function startHarness(ports: { anvil: number; pg: number }): Promis
     return JSON.parse(out.slice(out.indexOf("{"))).deployedTo as Address;
   };
 
-  const anvil: ChildProcess = spawn("anvil", ["--port", String(ports.anvil), "--chain-id", "5042002", "--block-time", "1", "--silent"], { stdio: "ignore" });
+  const anvil: ChildProcess = spawn("anvil", ["--port", String(ports.anvil), "--chain-id", "5042002", "--block-time", "1", "--silent", "--prune-history", "200"], { stdio: "ignore" });
   for (let i = 0; i < 50; i++) { try { await pub.getBlockNumber(); break; } catch { await sleep(200); } }
 
   // USDC/EURC at their real Arc addresses: deploy a mock ERC-20, copy its runtime code over the pinned address.
