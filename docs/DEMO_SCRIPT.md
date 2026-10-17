@@ -1,104 +1,127 @@
 # Athena — 3-minute demo video: what to run, what to show, what to say
 
-**The one-line pitch (say it in the first 10 seconds):**
+**Pitch (say it in the first 10 seconds):**
 > "Athena is an autonomous business treasury on Arc. Every decision is hash-committed on-chain *before* money moves and
-> revealed *after* — so anyone can verify the agent did what it said, and a human approves anything over the limits."
+> revealed *after* — so anyone can verify the agent did what it said — and a human approves anything over the limits."
 
-**Length:** 3:00 max (the submission limit). Target 2:50.
+**Length:** 3:00 max. Target 2:50. Cycles take **2–4 minutes** on this network, so you record in **two takes** and splice
+them; never wait on screen for a cycle.
 
-The system is **already running** on your PC (API :3100, worker, frontend :3000). Real cycles take **2–4 minutes** on this
-network, so the video is recorded in **two takes** that you splice together — do not wait on screen for a cycle.
-
----
-
-## A. Pre-flight (do this BEFORE recording — about 10 min)
-
-1. **Check everything is up**
-   - <http://localhost:3100/health> → `"ok":true`, `"paused":false`
-   - <http://localhost:3000/dashboard> → shows real numbers (not the demo `80,432`)
-2. **Browser:** Chrome, window ~1400×900, zoom 100%, one tab. Close other tabs/notifications. Turn on Do Not Disturb.
-3. **MetaMask:** on **Arc Testnet**, the **approver** account selected and **connected** to the app (click *Connect Wallet* once).
-   The approver needs a few cents of USDC for gas.
-4. **The invoice PDF to upload on camera:** `D:\Projects\Athena\docs\demo\pixel-studio-INV-DEMO-001.pdf`
-   (Pixel Studio → Athena Labs, **PX-DEMO-001, 2.50 USDC**, PO `PO-DEMO-001`, due today). Its purchase order and delivery
-   receipt are already seeded, so it matches and gets **paid automatically**. Do **not** upload it before recording — a second
-   upload of the same file is rejected as a duplicate.
-5. **Email shot (optional but impressive).** Resend only delivers to **your own Resend account email** while you use
-   `onboarding@resend.dev`. About 5 minutes before recording:
-   - Open the app at <http://localhost:3000>. In the **top navigation bar** click **RECEIVABLES** (5th item, between APPROVALS
-     and METRICS). On that page click the orange **ISSUE INVOICE** button (top right). A form opens. Fill:
-     *Customer Name* = `Demo Customer`; **Customer Email = the email you signed up to Resend with**; *Invoice Number* = leave
-     blank (auto); *Amount (USDC)* = `5.00`; *Due Date* = a date 2 weeks from today. Click **Issue**. You get a green
-     "Issued as a draft…" message.
-   - Click **Run Cycle** (dashboard). Within ~3 min the invoice email arrives **with a PDF attached and a "Pay online" link**.
-     Keep that email open in another window for the video.
-6. **Have these open in tabs/windows ready:** Dashboard, Obligations, Audit Trail, Approvals, Receivables, Metrics, your inbox.
-7. **Rehearse the whole demo once first (recommended).** The real demo PDF is single-use (a second upload is rejected as a
-   duplicate), so rehearse with a throwaway copy. Each run creates a *new* invoice number and its own PO + receipt:
-   ```powershell
-   cd D:\Projects\Athena\apps\backend
-   pnpm exec tsx --env-file=.env.local scripts/make-demo-invoice.ts test
-   ```
-   It prints the path of the file it wrote, `docs\demo\_rehearsal-PX-TEST-XXXX.pdf`. Then run sections **B and C** below exactly
-   as if recording, using that file instead of `pixel-studio-INV-DEMO-001.pdf`. Each rehearsal spends **2.50 USDC** of
-   the testnet treasury. It currently holds ~11.5 USDC with a 2 USDC operating floor, which covers **one rehearsal plus the real
-   take**. A third payment would hit the floor and be held; ask me to top it up if you want more rehearsals.
-   Delete the `_rehearsal-*.pdf` afterwards so you never upload the wrong file on camera.
-
-> The 30-second cooldown on **Run Cycle** is intentional. If you see "wait 30 seconds", wait.
+**The story the video tells (6 beats):**
+1. An invoice PDF arrives → the agent **extracts, validates, matches, and pays** it (2.50 USDC).
+2. A bigger invoice (7 USDC) is **over the limit** → the agent **stops and pings you on Telegram**.
+3. You **approve from your wallet** → only then does the contract pay.
+4. **Verify On-chain**: the decision hash recomputed in the browser matches the one committed *before* the money moved.
+5. A customer **pays a receivable in USDC** from their wallet (approve + pay), settled on Arc.
+6. **Email** with the PDF and pay link, and the **Metrics** page.
 
 ---
 
-## B. Take 1 — capture the live action (record ~1 min, then keep the app running)
+## A. Pre-flight (BEFORE recording — about 15 minutes)
 
-| Time | On screen | Do | Say |
+**1. Stack is up** (see `docs/OWNER_STEPS.md` section 0 for the commands: API, worker, frontend):
+- <http://localhost:3100/health> → `"ok":true`, `"paused":false`
+- <http://localhost:3000/dashboard> → shows real numbers (not demo `80,432`)
+
+**2. Browser:** Chrome, ~1400×900, zoom 100%, one tab, notifications off.
+
+**3. MetaMask:** network **Arc Testnet**, the **approver account** selected and **connected** to the app (click *Connect Wallet*
+once). It must hold a few USDC: gas is paid in USDC, and the same wallet pays the receivable on camera.
+
+**4. Telegram:** open your **Athena bot chat** in Telegram Desktop or Telegram Web (a separate window you can show). The
+escalation alert arrives there. If you have never received one, check the worker log for
+`escalation notification failed`, and confirm `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` in `apps/backend/.env.local`.
+
+**5. The two invoice PDFs** (already generated, purchase orders and delivery receipts already seeded):
+
+| File | What it is | What Athena does |
+|---|---|---|
+| `docs\demo\pixel-studio-INV-DEMO-001.pdf` | Pixel Studio, **2.50 USDC**, due today | Matches PO → **pays automatically** |
+| `docs\demo\alex-rivera-INV-DEMO-002-ESCALATE.pdf` | Alex Rivera, **7.00 USDC**, due today | Over the 6 USDC contractor limit → **escalates + Telegram** |
+
+Do **not** upload them before recording (a second upload of the same file is rejected as a duplicate).
+They can be regenerated any time:
+```powershell
+cd D:\Projects\Athena\apps\backend
+pnpm exec tsx --env-file=.env.local scripts/make-demo-invoice.ts demo        # recreates the 2.50 USDC one
+pnpm exec tsx --env-file=.env.local scripts/make-demo-invoice.ts escalate    # recreates the 7.00 USDC one
+```
+
+**6. The receivable you will pay on camera** (and the email shot). In the app: top nav **RECEIVABLES** → orange **ISSUE INVOICE**
+button (top right) → fill *Customer Name* `Pay Demo`, **Customer Email = the email you registered Resend with**,
+*Amount (USDC)* `1.00`, *Due Date* two weeks out → **Issue**. Click **Run Cycle** on the dashboard and wait until it shows in
+the Receivables list as **PENDING** with a *Pay page →* link (about 2–3 minutes: the worker registers it on-chain). Within
+the same cycle the invoice **email** (PDF attached, *Pay online* link) lands in your inbox — leave it open in another window.
+
+**7. Windows ready:** the app (Dashboard), Telegram, your email inbox, the MetaMask pop-up positioned so it is visible.
+
+**8. Rehearse once** with throwaway copies (new invoice numbers each time, so no duplicate problems):
+```powershell
+pnpm exec tsx --env-file=.env.local scripts/make-demo-invoice.ts test             # 2.50 USDC payment copy
+pnpm exec tsx --env-file=.env.local scripts/make-demo-invoice.ts test-escalate    # 7.00 USDC escalation copy
+```
+They write `docs\demo\_rehearsal-*.pdf` — upload those instead, run sections B and C, then **delete the `_rehearsal-*.pdf` files**.
+Funds: the treasury pays 2.50 and 7.00 per run and keeps a 2 USDC floor. It currently holds ~24 USDC, enough for **one rehearsal and
+the real take** (2 × 9.50 USDC plus the floor). Ask me to top it up if you want more rehearsals.
+
+> The **Run Cycle** button has a 30-second cooldown on purpose. If it says "wait 30 seconds", wait.
+
+---
+
+## B. Take 1 — start the action (record ~35 seconds, then stop and wait ~3–4 minutes)
+
+| Time | Screen | Do | Say |
 |---|---|---|---|
-| 0:00–0:15 | **Dashboard** | Slowly point at: Free USDC, Reserved, Runway, the budget bars, the live feed. | "This is Athena's treasury on Arc testnet: balances, budgets per category, and a live feed of every agent action." |
-| 0:15–0:45 | **Obligations → Upload Invoice** | Click **Upload Invoice**, choose `pixel-studio-INV-DEMO-001.pdf`. The green banner says *Received…*. Switch to **Dashboard** and click **Run Cycle**. Watch the feed show `CYCLE STEP … recover, sync, ingest, validate …`. | "A vendor invoice arrives as a PDF. Athena extracts it with an LLM, but the model only *suggests* — code validates every number, checks for duplicates, and matches it three ways against the purchase order and delivery receipt." |
+| 0:00–0:12 | **Dashboard** (nav → TREASURY) | Point at Free USDC, the budget bars, the live feed. | "This is Athena's treasury on Arc testnet — balances, budgets by category, and a live feed of every agent action." |
+| 0:12–0:35 | **OBLIGATIONS** → **Upload Invoice** | Upload `pixel-studio-INV-DEMO-001.pdf` (green *Received…* banner), then upload `alex-rivera-INV-DEMO-002-ESCALATE.pdf`. Go to **Dashboard** → click **Run Cycle** (feed starts: `CYCLE STEP … ingest, validate …`). | "Vendor invoices arrive as PDFs. An LLM reads them, but it only *suggests*: code validates every amount, checks duplicates, and matches each invoice three ways against the purchase order and the delivery receipt." |
 
-**Stop recording.** Leave the app alone for **~3 minutes** while the cycle runs. (Click **Run Cycle** once more after ~2 minutes
-so the payment step runs; the 30 s cooldown allows it.)
+**Stop recording.** Wait ~3 minutes. After ~2 minutes click **Run Cycle** once more so the payment step runs.
+**Telegram will buzz** when the 7 USDC escalation is raised.
+
+Check before Take 2 (not on camera): Audit Trail shows **PAY_NOW · Pixel Studio · 2.5 USDC**, and Telegram has the alert.
 
 ---
 
-## C. Take 2 — the results (record ~2 min)
+## C. Take 2 — the results (record ~2 minutes 25 seconds)
 
-Check first (not on camera): **Audit Trail** now shows a new **PAY_NOW · Pixel Studio · 2.5 USDC · revealed**.
-
-| Time | On screen | Do | Say |
+| Time | Screen | Do | Say |
 |---|---|---|---|
-| 0:45–1:15 | **Audit Trail** | Click the new **PAY_NOW — Pixel Studio**. Show the rationale text and the three transaction links (Commit, Execute, Reveal). | "The agent decided to pay today, and wrote its reasoning. It committed the hash of that decision on-chain first, executed the payment in a later block, then revealed the full record." |
-| 1:15–1:40 | Same panel → **Verify On-chain** | Click **Verify On-chain**. Point at the green **Hash verified** strip and the two identical hashes. Optionally click the **Execute** link to show the transaction on the explorer. | "Anyone can recompute the SHA-256 of the record in their browser and compare it to the hash that was committed before the money moved. If the agent ever fails to reveal, the contract freezes it." |
-| 1:40–2:10 | **Approvals** | Show the **Alex Rivera · 12 USDC** escalation with status **APPROVED** and its **Resolve tx** link. (It was over the per-transaction limit, so the agent committed it and stopped.) | "This 12 USDC payment exceeded the approval limit. Athena didn't pay — it escalated to a human. I approved it from my approver wallet, and only then did the contract execute it. Hard rules revert; soft rules escalate." |
-| 2:10–2:30 | **Inbox** + **Receivables** | Show the invoice **email** (PDF attached, *Pay online* link). Then **Receivables** → open the pay page. | "On the receivables side Athena issues invoices, emails customers with a PDF and a pay link, escalates reminders, and settles payments on-chain — including agent-to-agent payments over x402." |
-| 2:30–2:50 | **Metrics** | Show Decisions On-chain, Total USDC Paid, Audit Streak. | "Every number here is derived from on-chain events: decisions revealed, USDC moved, zero overdue reveals." |
-| 2:50–3:00 | Dashboard | Hold on the dashboard. | "Athena: a treasury agent you can audit — committed before it acts, revealed after, and a human in the loop for anything big. Built on Arc with Circle." |
-
-### If you want a **live** human approval on camera
-The 12 USDC escalation is already resolved. To show a live click you need a *new* pending escalation, which needs ≥ 8 USDC in
-the treasury. Ask me to prepare one (an over-limit invoice + funding) — otherwise showing the resolved escalation is fine.
+| 0:35–0:55 | **Telegram** window | Show the message: *"Athena needs a decision — Alex Rivera: 7 USDC — Why it escalated: over the per-payment approval limit — Agent's reasoning … — Review: …"*. Click its **Review** link. | "The 7 USDC invoice is over the approval limit, so Athena didn't pay. It committed its decision on-chain, stopped, and pinged me on Telegram with its reasoning." |
+| 0:55–1:20 | **Approvals** (opens straight on the escalation) | Click **Approve Escalation** → MetaMask → **Confirm**. A green line appears: *"approveEscalation confirmed on Arc"* with a **View transaction** link — click it to show the explorer. | "I approve from my approver wallet. The contract checks I hold the approver role, and only then executes the payment. Hard rules revert; soft rules escalate." |
+| 1:20–1:50 | **AUDIT TRAIL** | Click the **PAY_NOW · Pixel Studio · 2.5 USDC** row. Show the rationale and the Commit / Execute / Reveal links, then click **Verify On-chain** and point at the green **Hash verified** strip. | "This 2.50 USDC invoice was within limits, so Athena paid it on its own — after committing the hash of its decision on-chain. The browser recomputes the SHA-256 and it matches. If the agent ever fails to reveal, the contract freezes it." |
+| 1:50–2:30 | **RECEIVABLES** | Open **Pay Demo** → **Pay page →**. **Connect wallet** if needed → **Pay USDC**. MetaMask asks twice: **(1) approve** USDC, **(2) payReceivable** — confirm both. The card turns green: **"Payment received — receivable settled on-chain"**; click **View transaction →**. | "Athena also collects. Customers get a pay link; this is the customer paying in USDC from their own wallet — approve, then pay — settled on Arc in under a second. Agents can pay the same invoice over x402." |
+| 2:30–2:42 | **Inbox** | Show the invoice email: PDF attached, *Pay online* link. | "Athena emails the invoice with the PDF and the pay link, and escalates reminders as it ages." |
+| 2:42–3:00 | **METRICS** → Dashboard | Show Decisions On-chain, Total USDC Paid, Audit Streak. | "Every number is derived from on-chain events. Athena: a treasury you can audit — committed before it acts, revealed after, with a human in the loop for anything big. Built on Arc with Circle." |
 
 ---
 
-## D. What to show if something goes wrong
+## D. If something goes wrong
 
-| Problem | Fallback |
+| Problem | What to do |
 |---|---|
-| The PDF is still "held" or no PAY_NOW yet | Show the **earlier** PAY_NOW (Pixel Studio 3 USDC or the 2.5 USDC rehearsal) — it proves the same flow. Splice the real one in later. |
-| Run Cycle says "wait 30 seconds" | Wait; it is a rate limit. |
-| Dashboard shows demo numbers | The API is down — start it (see `docs/OWNER_STEPS.md` section 0). |
-| Wallet shows "Contract refused: …" | That is the app simulating first. Read the error name aloud — it is the contract's own rule. |
-| Email did not arrive | Check the receivable's **customer email is your Resend account email**; check Resend → Logs. Skip the shot if needed. |
+| No Telegram message | The escalation still exists: open **Approvals**. Check the worker log for `escalation notification failed`; the worker retries every cycle. As a fallback, show the older message in the chat history. |
+| PDF stays "held" / no payment yet | Click **Run Cycle** again (wait out the 30 s cooldown). Splice in a shot of an earlier PAY_NOW if needed. |
+| Approve button does nothing | Wallet not connected, wrong network (must be chain 5042002), or not the approver account. |
+| Pay page: *Contract refused: …* | The app simulated first and the contract would revert. Name of the error is the contract's own rule (e.g. `NotCustomer` = that receivable is restricted to another wallet). Use another receivable. |
+| Dashboard shows demo numbers | The API is down — start it (`docs/OWNER_STEPS.md` section 0). |
+| Email did not arrive | The receivable's *Customer Email* must be your Resend account email; check Resend → Logs. Skip the shot if needed. |
 
 ---
 
 ## E. Where Resend emails go
 
-- A reminder/invoice email is sent **to the email address stored on the receivable's customer** (the *Customer Email* field in
-  **Issue Invoice**). Customers without an email are skipped.
+- To the **Customer Email on the receivable** (the field in **Issue Invoice**). Customers without an email are skipped.
 - **From** is `FROM_EMAIL` in `apps/backend/.env.local` — currently `Athena Labs <onboarding@resend.dev>`.
-- With `onboarding@resend.dev` (no verified domain), Resend **only delivers to the email you registered your Resend account with**.
-  Any other recipient is rejected. The three seeded customers use `*.example` addresses, so their emails go nowhere.
-- To email real customers, verify a domain in Resend and change `FROM_EMAIL` to an address on that domain.
-- The ladder: invoice on issue, reminder 3 days before due, "due today", then overdue reminders at +7 and +14 days (late payers
-  earlier); after the last step it hands the case to a human. Each email contains the PDF (first one), the pay link and the x402 link.
+- With `onboarding@resend.dev` (no verified domain), Resend **only delivers to the email your Resend account was registered
+  with**; any other recipient is rejected. The seeded customers use `*.example` addresses, so those go nowhere.
+- To email real customers, verify a domain in Resend and change `FROM_EMAIL` to an address on it.
+- Ladder: invoice on issue → reminder 3 days before due → "due today" → overdue reminders at +7 and +14 days (late payers
+  earlier) → then a human takes over.
+
+## F. Where Telegram messages go
+
+- To the chat in `TELEGRAM_CHAT_ID` through your bot (`TELEGRAM_BOT_TOKEN`), sent by the **worker** the moment an
+  escalation is raised (and retried every cycle if Telegram was unreachable).
+- The message names the payee and amount, why it escalated, the agent's reasoning, the expiry, and a **Review** link that opens
+  the escalation directly in the app (`/approvals?decision=<id>`). The link uses `FRONTEND_URL` (currently
+  `http://localhost:3000`, so it only opens on your PC — set it to the public frontend URL after deploying).

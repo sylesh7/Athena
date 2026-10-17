@@ -43,6 +43,15 @@ export default function ApprovalsPage() {
   const refresh = () => { getEscalations().then(setEscalations); getPayees().then(setPayees); };
   useEffect(refresh, []);
 
+  // Deep link from the Telegram message: /approvals?decision=<decisionId> opens that escalation.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("decision");
+    if (!id || selectedEsc) return;
+    const hit = escalations.find((e) => e.decisionId.toLowerCase() === id.toLowerCase());
+    if (hit) { setTab("escalations"); setSelectedEsc(hit); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [escalations]);
+
   // Simulate first (a revert never reaches the wallet), then sign, then wait for the receipt and re-read from the API.
   async function act(key: string, fn: "approveEscalation" | "rejectEscalation" | "approvePayee" | "rejectPayee" | "suspendPayee", id: string) {
     if (!address || !publicClient) return;
