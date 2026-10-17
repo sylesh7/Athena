@@ -48,3 +48,5 @@ packages/contracts/cache/
 packages/contracts/broadcast/
 packages/contracts/lib/forge-std/
 .env.local
+.vercel
+.env*
