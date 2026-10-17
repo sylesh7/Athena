@@ -30,17 +30,22 @@ Open three PowerShell windows.
 ```powershell
 # window 1 — API
 cd D:\Projects\Athena\apps\backend
-pnpm api
+pnpm exec tsx --env-file=.env.local src/api.ts
 
 # window 2 — worker (runs cycles every 15 min, handles triggers and events)
 cd D:\Projects\Athena\apps\backend
-pnpm worker
+pnpm exec tsx --env-file=.env.local src/worker.ts
 
 # window 3 — frontend
 cd D:\Projects\Athena\frontend
 npm run build
 npm start          # http://localhost:3000
 ```
+
+> **Use `pnpm exec tsx …` as shown, not `pnpm api` / `pnpm worker`.** On this PC pnpm's `script-shell` is set to `cmd.exe`,
+> which makes `pnpm <script>` open an empty `cmd` prompt and exit instead of running the script (you only see the
+> Windows banner). The commands above skip that. To fix it for good, run `pnpm config delete script-shell` once; after
+> that `pnpm api` and `pnpm worker` work.
 
 Check it is healthy: open <http://localhost:3100/health> — you should see `"ok":true` and the treasury address.
 
@@ -256,7 +261,7 @@ Checklist (from the hackathon brief):
 - [ ] Traction numbers for the update:
   ```powershell
   cd D:\Projects\Athena\apps\backend
-  node_modules\.bin\tsx --env-file=.env.local scripts\traction.ts
+  pnpm exec tsx --env-file=.env.local scripts/traction.ts
   ```
   Paste the output into the **Canteen Discord** (`discord.gg/bDaEfsSqc8`) using the update command `arc-canteen update traction`.
 - [ ] Submission form: <https://forms.gle/BBWrdfuircrKiG2i6>.
@@ -287,6 +292,7 @@ Checklist (from the hackathon brief):
 | `forge`/`cast`: *dns error / No such host* | Windows resolves but forge's resolver fails. Retry; or add `104.18.21.97 rpc.testnet.arc.io` to `C:\Windows\System32\drivers\etc\hosts` (Administrator), and remove it afterwards. |
 | `cast send`: *unexpected argument '--slow'* | `--slow` exists only on `forge script`, not `cast send`. Just drop it. |
 | `NoPendingPayee(...)` on `approvePayee` | That payee is already approved (or was never proposed). Not an error. |
+| `pnpm api` / `pnpm worker` only prints the Windows banner and returns | pnpm's `script-shell=cmd.exe` setting. Use `pnpm exec tsx --env-file=.env.local src/api.ts` (or `src/worker.ts`), or run `pnpm config delete script-shell` once. |
 | Dashboard shows demo numbers | The frontend can't reach the API → check `NEXT_PUBLIC_ATHENA_API` and that the API is up (`/health`). |
 | "Dry run queued" but nothing happens | The worker is not running (or lost its connection). Restart `pnpm worker`. |
 | Pay page: *Contract refused: NotCustomer* | That receivable is restricted to a specific customer wallet. Use that wallet. |
