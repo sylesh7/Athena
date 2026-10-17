@@ -283,3 +283,25 @@ Expect to debug these on first contact, starting with the worker log.
 | `ActionMismatch` → "operator halted" | Stored action differs from the committed one — a bug, deliberately not auto-recovered. Inspect the decision row, fix, then restart the worker. |
 | API 500 on `/health` | RPC unreachable or `TREASURY_ADDRESS` wrong. |
 | Amounts look wrong by a huge factor | Native 18-decimal vs ERC-20 6-decimal USDC. |
+
+## Frontend (Next.js, `frontend/`)
+
+```bash
+cd frontend && npm install
+# frontend/.env.local (git-ignored):
+#   NEXT_PUBLIC_ATHENA_API=http://localhost:3100      # the API the browser talks to (reads, SSE, signed approver actions)
+#   ATHENA_ADMIN_API_KEY=<same as the backend ADMIN_API_KEY>   # SERVER-ONLY: used by /api/cycle, /api/upload, /api/receivables, /api/payees
+npm run build && npm start        # or: npm run dev
+```
+- Reads, the SSE live feed and the verify panel talk to the API directly. Anything that needs the admin key (run cycle, upload
+  invoice, issue receivable, add payee) goes through a same-origin Next route that holds the key server-side; they only ever
+  create **drafts** and are rate-limited — money still needs the on-chain approver.
+- Approver actions are real wallet transactions/signatures: connect the **approver** wallet (MetaMask) on Arc Testnet to
+  approve/reject escalations, activate/suspend payees, and sign invoice releases and decision reviews. Customers pay a
+  receivable from `/pay/<receivableId>` with their own wallet.
+- If the API is unreachable the pages fall back to demo data (console warning); an API *error* is shown, not hidden.
+- Production: set `NEXT_PUBLIC_ATHENA_API` to the public API URL and add the frontend origin to the backend `CORS_ORIGIN`.
+
+### Local network note
+The worker's database LISTEN connection and the pg pool now self-heal on dropped connections (heartbeat + reconnect); on a
+flaky network expect `LISTEN connection lost — reconnecting` warnings, not a crash.

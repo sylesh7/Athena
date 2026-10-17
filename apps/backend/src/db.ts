@@ -1,11 +1,16 @@
 import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
 import { commonCfg } from "./config.js";
+import { log } from "./log.js";
 
 export const sb = createClient(commonCfg.SUPABASE_URL, commonCfg.SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
-export const pool = new pg.Pool({ connectionString: commonCfg.DATABASE_URL, max: 10 });
+export const pool = new pg.Pool({ connectionString: commonCfg.DATABASE_URL, max: 10, keepAlive: true });
+// An idle pooled connection that the network resets emits 'error' on the POOL; with no listener Node treats it as an
+// uncaught exception and kills the process (seen live: worker died on ECONNRESET). pg drops the dead client itself, so
+// logging is the right handling — the next query simply gets a fresh connection.
+pool.on("error", (e) => log.warn({ err: String(e) }, "idle database connection dropped"));
 
 // pg returns numeric/int8 as strings already; keep it that way (never let money become a JS number).
 

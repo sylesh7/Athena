@@ -196,7 +196,7 @@ export interface MetricsSnapshot {
   discountsCaptured: string;
   fundsUnderManagement: string;
   yieldEarned: string;
-  forecastAccuracy: number;
+  forecastAccuracy: number | null;
   crossChainPayouts: number;
   decisionsOnChain: number;
   auditStreak: number;
@@ -487,7 +487,7 @@ export const getMetrics = () =>
       totalUsdcReceived: String(m.usdcReceived ?? 0), totalUsdcPaid: String(m.usdcPaidOut ?? 0), obligationsSettledOnTime: Number(m.obligationsSettledOnTimeNoHuman ?? 0),
       decisionsTotal: Number(m.decisionsMade ?? 0), decisionsEscalated: Number(m.decisionsEscalated ?? 0), invoicesProcessed: Number(m.invoicesProcessed ?? 0),
       duplicatesCaught: Number(m.duplicatesCaught ?? 0), discountsCaptured: String(m.discountsCaptured ?? 0), fundsUnderManagement: String(m.fundsUnderManagement ?? 0),
-      yieldEarned: String(Math.max(0, Number(m.yieldEarned ?? 0))), forecastAccuracy: Number(m.forecastAccuracyPct ?? 0),
+      yieldEarned: String(Math.max(0, Number(m.yieldEarned ?? 0))), forecastAccuracy: m.forecastAccuracyPct != null ? Number(m.forecastAccuracyPct) : null,
       crossChainPayouts: Number(m.crossChainPayoutsMinted ?? 0), decisionsOnChain: Number(m.decisionsRevealedOnChain ?? 0),
       auditStreak: Number(m.auditArrearsEvents ?? 0) === 0 ? Math.max(1, j.series?.length ?? 1) : 0,
       updatedAt: m.asOf ?? j.latest?.taken_at ?? new Date().toISOString(),

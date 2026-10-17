@@ -18,7 +18,7 @@ export interface EmailInput {
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
 export function renderEmail(i: EmailInput): { subject: string; text: string; html: string } {
-  const amount = `${formatAmount(i.outstanding)} ${i.token}`;
+  const amount = `${formatAmount(i.outstanding).replace(/(.dd)0+$/, "$1")} ${i.token}`; // 80.000000 → 80.00 (display only)
   const subject =
     i.stage === 0 ? `Invoice ${i.invoiceNumber} — ${amount} due ${i.dueDate}`
     : i.stage === 1 ? `Reminder: invoice ${i.invoiceNumber} is due ${i.dueDate}`

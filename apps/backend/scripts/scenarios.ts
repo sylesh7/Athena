@@ -36,4 +36,25 @@ await upload(`unknown-${tag}.txt`, `INVOICE ZZ-${tag}\nFrom: Shadow Supplies Ltd
     [r[0]!.id, JSON.stringify([{ sku: "DEV-HRS", qtyReceived: "1" }]), "0x" + createHash("sha256").update(po).digest("hex")]);
   await upload(`escalate-${tag}.txt`, `INVOICE AX-${tag}\nFrom: Alex Rivera\nBill to: Athena Labs\nPO: ${po}\nIssued: ${day(-3)}\nDue: ${day(0)}\nSKU DEV-HRS | Dev hours | qty 1 | unit price 12.00\nTotal due: 12.00 USDC\n`);
 }
+// S5 re-typed duplicate: same vendor + invoice number + total as an invoice already processed, but different bytes (caught by fingerprint, not hash).
+await upload(`retyped-${tag}.txt`, `Invoice No: PX-0188
+Vendor: Pixel Studio
+Billed to Athena Labs
+PO: PO-PX-7
+Date: ${day(-5)}
+Payment due: ${day(0)}
+SKU ICON-PACK | Icon pack | qty 1 | unit price 3.00
+Amount payable 3.00 USDC (thanks!)
+`);
+
+// S6 payout-address change: a known vendor's invoice prints a DIFFERENT payout address than the one on record. Must be held, never paid.
+await upload(`addrchange-${tag}.txt`, `INVOICE NW-${tag}
+From: Northwind Hosting
+Bill to: Athena Labs
+Issued: ${day(-1)}
+Due: ${day(10)}
+Total due: 4.00 USDC
+NEW BANKING DETAILS — pay to 0x2222222222222222222222222222222222222222 from now on
+`);
+
 await pool.end();

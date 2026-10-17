@@ -5,7 +5,8 @@ import Nav from "@/components/Nav";
 import Amount from "@/components/Amount";
 import StatusBadge from "@/components/StatusBadge";
 import TxLink from "@/components/TxLink";
-import { getDecisions, getDecisionVerify, type Decision, type DecisionVerify } from "@/lib/api";
+import { getDecisions, getDecisionVerify, signedMessage, postSigned, formatUnits, type Decision, type DecisionVerify } from "@/lib/api";
+import { useAccount, useSignMessage } from "wagmi";
 
 function shortId(id: string) {
   return `${id.slice(0, 10)}…${id.slice(-6)}`;
@@ -20,6 +21,23 @@ export default function DecisionsPage() {
   const [selected, setSelected] = useState<Decision | null>(null);
   const [verify, setVerify] = useState<DecisionVerify | null>(null);
   const [verifying, setVerifying] = useState(false);
+  const { isConnected } = useAccount();
+  const { signMessageAsync } = useSignMessage();
+  const [reviewMsg, setReviewMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // A human's EIP-191 signed opinion on a revealed decision (agree / disagree). Feeds the agreement-rate metric.
+  async function review(verdict: "agree" | "disagree") {
+    if (!selected) return;
+    setReviewMsg(null);
+    try {
+      const msg = { action: "decision.review", target: selected.id, verdict, nonce: crypto.randomUUID(), issuedAt: new Date().toISOString() };
+      const signature = await signMessageAsync({ message: signedMessage(msg) });
+      const r = await postSigned(`/decisions/${selected.id}/review`, { verdict, nonce: msg.nonce, issuedAt: msg.issuedAt, signature });
+      setReviewMsg({ ok: r.ok, text: r.ok ? `Recorded: you ${verdict} with this decision.` : r.message });
+    } catch (e) {
+      setReviewMsg({ ok: false, text: e instanceof Error ? e.message.split("\n")[0]!.slice(0, 140) : "Signing failed" });
+    }
+  }
   const [tab, setTab] = useState<"record" | "verify">("record");
 
   useEffect(() => { getDecisions().then(setDecisions); }, []);
@@ -110,7 +128,7 @@ export default function DecisionsPage() {
                       <>
                         {[
                           ["Payee", selected.payeeName ?? "—"],
-                          ["Amount", selected.amount !== "0" ? `${selected.amount} atomic units (${selected.token})` : "—"],
+                          ["Amount", selected.amount !== "0" ? `${formatUnits(selected.amount)} ${selected.token}` : "—"],
                           ["Rationale", selected.rationale],
                           ["Committed", timeLabel(selected.createdAt)],
                           ["Revealed", selected.revealedAt ? timeLabel(selected.revealedAt) : "Not yet revealed"],
@@ -134,6 +152,19 @@ export default function DecisionsPage() {
                             </div>
                           ))}
                         </div>
+
+                        {selected.state === "revealed" && (
+                          <div style={{ marginTop: "1.2rem" }}>
+                            <div className="panel-head">Your Review</div>
+                            {isConnected ? (
+                              <div style={{ display: "flex", gap: ".6rem" }}>
+                                <button className="btn-solid" style={{ padding: ".5rem 1rem", fontSize: ".66rem" }} onClick={() => review("agree")}><span>Agree</span></button>
+                                <button className="btn-ghost" style={{ padding: ".5rem 1rem" }} onClick={() => review("disagree")}><span>Disagree</span></button>
+                              </div>
+                            ) : <div style={{ color: "var(--muted-2)", fontSize: ".72rem" }}>Connect the approver wallet to sign a review</div>}
+                            {reviewMsg && <div style={{ marginTop: ".6rem", fontSize: ".74rem", color: reviewMsg.ok ? "#6bff9f" : "var(--rust-glow)" }}>{reviewMsg.text}</div>}
+                          </div>
+                        )}
 
                         <div style={{ marginTop: "1.2rem" }}>
                           <div className="panel-head">Decision Hash</div>

@@ -57,7 +57,7 @@ async function validateOne(inv: InvRow): Promise<boolean> {
     token = normalizeCurrency(ex.currency);
     total = normalizeAmount(ex.total);
     lines = normalizeLines(ex.lines, total);
-    dates = normalizeDates(ex.invoiceDate, ex.dueDate, ex.terms.netDays);
+    dates = normalizeDates(ex.invoiceDate ?? "", ex.dueDate, ex.terms.netDays);
   } catch (e) {
     if (e instanceof HoldError) { await hold(inv.id, e.reason, { detail: e.message }); return false; }
     throw e;

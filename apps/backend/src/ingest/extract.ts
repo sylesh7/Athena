@@ -12,7 +12,7 @@ export const ExtractedInvoice = z.object({
   vendorName: z.string(),
   vendorEmail: z.string().nullable(),
   invoiceNumber: z.string(),
-  invoiceDate: z.string(), // YYYY-MM-DD
+  invoiceDate: z.string().nullable(), // YYYY-MM-DD; null when not printed (the validator then holds it as bad_dates)
   dueDate: z.string().nullable(),
   currency: z.string(), // as printed: "USDC", "USD", "EUR", "EURC"
   total: z.string(), // exactly as printed, e.g. "1,250.00"

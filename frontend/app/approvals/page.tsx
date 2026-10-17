@@ -22,6 +22,22 @@ export default function ApprovalsPage() {
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
   const [busy, setBusy] = useState<string | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [np, setNp] = useState({ name: "", slug: "", kind: "vendor", category: "VENDOR", account: "", email: "", cap: "500" });
+  const [addMsg, setAddMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function addPayee() {
+    setAddMsg(null);
+    const slug = np.slug.trim() || `${np.kind}:${np.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+    try {
+      const r = await fetch("/api/payees", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+        slug, name: np.name.trim(), kind: np.kind, category: np.category, token: "USDC", domain: 26, account: np.account.trim(),
+        ...(np.email.trim() ? { email: np.email.trim() } : {}), perTxCap: np.cap.trim() || "0" }) });
+      const j = await r.json().catch(() => ({}));
+      setAddMsg(r.ok ? { ok: true, text: "Draft created. The worker screens it and proposes it on-chain; then activate it here with the approver wallet." } : { ok: false, text: j?.error ?? `HTTP ${r.status}` });
+      if (r.ok) { setNp({ ...np, name: "", slug: "", account: "", email: "" }); setTimeout(refresh, 5000); }
+    } catch { setAddMsg({ ok: false, text: "Could not reach the server." }); }
+  }
   const [notice, setNotice] = useState<{ ok: boolean; text: string; tx?: string } | null>(null);
 
   const refresh = () => { getEscalations().then(setEscalations); getPayees().then(setPayees); };
@@ -169,6 +185,35 @@ export default function ApprovalsPage() {
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === "payees" && (
+            <div style={{ marginBottom: "1.4rem" }}>
+              <button className="btn-ghost" style={{ padding: ".5rem 1rem" }} onClick={() => setShowAdd(!showAdd)}><span>{showAdd ? "Cancel" : "Add Payee"}</span></button>
+              {showAdd && (
+                <div style={{ border: "1px solid var(--line)", padding: "1.4rem", marginTop: "1rem", maxWidth: "540px" }}>
+                  {([
+                    ["name", "Name", "Pixel Studio"], ["account", "Payout address (Arc)", "0x…"], ["email", "Email (optional)", "billing@vendor.com"], ["cap", "Per-payment cap (USDC)", "500"],
+                  ] as const).map(([k, label, ph]) => (
+                    <div key={k} style={{ marginBottom: ".9rem" }}>
+                      <label style={{ display: "block", fontSize: ".62rem", letterSpacing: ".2em", color: "var(--muted)", textTransform: "uppercase", marginBottom: ".4rem" }}>{label}</label>
+                      <input value={np[k]} placeholder={ph} onChange={(e) => setNp({ ...np, [k]: e.target.value })}
+                        style={{ width: "100%", background: "transparent", border: "1px solid var(--line)", color: "var(--ink)", padding: ".6rem .85rem", fontSize: ".8rem", fontFamily: "inherit", outline: "none" }} />
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", gap: ".8rem", marginBottom: "1rem" }}>
+                    <select value={np.kind} onChange={(e) => setNp({ ...np, kind: e.target.value })} style={{ background: "transparent", color: "var(--ink)", border: "1px solid var(--line)", padding: ".5rem" }}>
+                      {["vendor", "contractor", "service"].map((o) => <option key={o} value={o} style={{ color: "#000" }}>{o}</option>)}
+                    </select>
+                    <select value={np.category} onChange={(e) => setNp({ ...np, category: e.target.value })} style={{ background: "transparent", color: "var(--ink)", border: "1px solid var(--line)", padding: ".5rem" }}>
+                      {["VENDOR", "CONTRACTOR", "SUBSCRIPTION", "SERVICES"].map((o) => <option key={o} value={o} style={{ color: "#000" }}>{o}</option>)}
+                    </select>
+                  </div>
+                  <button className="btn-solid" style={{ padding: ".6rem 1.3rem", fontSize: ".68rem" }} onClick={addPayee}><span>Create Draft</span></button>
+                  {addMsg && <div style={{ marginTop: ".8rem", fontSize: ".74rem", color: addMsg.ok ? "#6bff9f" : "var(--rust-glow)" }}>{addMsg.text}</div>}
                 </div>
               )}
             </div>

@@ -38,7 +38,7 @@ export default function MetricsPage() {
     { label: "Discounts Captured", value: formatUnits(metrics.discountsCaptured), note: "USDC early-pay savings" },
     { label: "Funds Under Management", value: formatUnits(metrics.fundsUnderManagement), note: "USDC equivalent" },
     { label: "Yield Earned", value: formatUnits(metrics.yieldEarned), note: "USDC · " + metrics.network },
-    { label: "Forecast Accuracy", value: `${metrics.forecastAccuracy.toFixed(1)}%`, note: "14-day rolling MAE" },
+    { label: "Forecast Accuracy", value: metrics.forecastAccuracy != null ? `${metrics.forecastAccuracy.toFixed(1)}%` : "—", note: metrics.forecastAccuracy != null ? "14-day rolling MAE" : "needs 14 days of history" },
     { label: "Cross-chain Payouts", value: `${metrics.crossChainPayouts}`, note: "via CCTP V2" },
     { label: "Businesses Operated", value: `${metrics.businessesOperated}`, note: "entities on-chain" },
     { label: "Audit Streak", value: `${metrics.auditStreak}d`, note: "no overdue reveals" },

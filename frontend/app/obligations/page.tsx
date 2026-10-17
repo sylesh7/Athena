@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAccount, useSignMessage } from "wagmi";
 import Nav from "@/components/Nav";
@@ -29,6 +29,24 @@ export default function ObligationsPage() {
   const { isConnected } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const [resolving, setResolving] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploadMsg, setUploadMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  // The file goes to our own /api/upload route (which holds the admin key), then through intake → extraction → validation.
+  async function upload(file: File) {
+    setUploading(true); setUploadMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file, file.name);
+      const r = await fetch("/api/upload", { method: "POST", body: fd });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) setUploadMsg({ ok: false, text: j?.error ?? `Upload failed (HTTP ${r.status})` });
+      else setUploadMsg({ ok: true, text: j.duplicate ? "That document was already received — duplicate ignored." : "Received. Extraction and validation run in the next cycle; check the review queue shortly." });
+      setTimeout(() => { getHeldInvoices().then(setInvoices); getObligations().then(setObligations); }, 8000);
+    } catch { setUploadMsg({ ok: false, text: "Could not reach the server." }); }
+    finally { setUploading(false); if (fileRef.current) fileRef.current.value = ""; }
+  }
   const [resolveMsg, setResolveMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   // EIP-191 signed by an APPROVER wallet; the API checks the role on-chain, freshness and one-time nonce.
@@ -64,11 +82,19 @@ export default function ObligationsPage() {
               <h1>Obligations</h1>
             </div>
             <div className="page-head-actions">
-              <button className="btn-ghost">
-                <span>Upload Invoice</span>
+              <input ref={fileRef} type="file" accept=".pdf,.txt,.json,application/pdf,text/plain" style={{ display: "none" }}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); }} />
+              <button className="btn-ghost" disabled={uploading} onClick={() => fileRef.current?.click()}>
+                <span>{uploading ? "Uploading…" : "Upload Invoice"}</span>
               </button>
             </div>
           </div>
+
+          {uploadMsg && (
+            <div style={{ padding: ".8rem 1rem", border: `1px solid ${uploadMsg.ok ? "#1e6a3a" : "var(--rust)"}`, color: uploadMsg.ok ? "#6bff9f" : "var(--rust-glow)", fontSize: ".78rem", marginBottom: "1.2rem" }}>
+              {uploadMsg.text}
+            </div>
+          )}
 
           <div className="tabs">
             <button className={`tab${tab === "payables" ? " active" : ""}`} onClick={() => setTab("payables")}>
