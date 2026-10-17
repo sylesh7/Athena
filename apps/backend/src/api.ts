@@ -22,7 +22,13 @@ import { intakeDocument, IntakeError } from "./ingest/intake.js";
 
 const api = loadApiCfg();
 const app = express();
-app.use(cors({ origin: api.CORS_ORIGIN.split(",") }));
+// A frontend served from a public https origin (e.g. Vercel) that talks to an API on localhost triggers Chrome's Private Network
+// Access preflight; without this header the browser blocks the call. Harmless when the API is itself public.
+app.use((req, res, next) => {
+  if (req.headers["access-control-request-private-network"] === "true") res.setHeader("Access-Control-Allow-Private-Network", "true");
+  next();
+});
+app.use(cors({ origin: api.CORS_ORIGIN.split(",").map((o) => o.trim()) }));
 app.use(express.json({ limit: "1mb" }));
 
 // BigInt-safe JSON; money is never a JS number.
