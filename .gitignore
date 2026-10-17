@@ -50,3 +50,7 @@ packages/contracts/lib/forge-std/
 .env.local
 .vercel
 .env*
+
+# demo video sources and generated video output (large)
+Demo_videos/
+brag-output/
